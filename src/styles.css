@@ -800,6 +800,8 @@ h2 {
 
 /* ---------- confirm dialog ---------- */
 dialog.confirm {
+  /* The design system reset zeroes every margin; a modal <dialog> centers with margin: auto. */
+  margin: auto;
   width: min(26rem, calc(100vw - 2rem));
   padding: var(--space-6);
   border: 1px solid var(--border-default);
