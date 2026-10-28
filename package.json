@@ -1,0 +1,27 @@
+{
+  "name": "pivot",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "tauri": "tauri",
+    "test": "cd src-tauri && cargo test"
+  },
+  "dependencies": {
+    "@fontsource/chakra-petch": "^5.2.0",
+    "@fontsource/ibm-plex-mono": "^5.2.0",
+    "@fontsource/ibm-plex-sans": "^5.2.0",
+    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-autostart": "^2.7.0",
+    "@tauri-apps/plugin-notification": "^2.8.0",
+    "@tauri-apps/plugin-opener": "^2.7.2",
+    "mitchel-design-system": "github:Lucas-Mitchel17/mitchel-design-system#v0.4.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}
