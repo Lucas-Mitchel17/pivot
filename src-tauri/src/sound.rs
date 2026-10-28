@@ -8,9 +8,9 @@ use std::num::NonZero;
 use std::path::{Path, PathBuf};
 
 /// Longest custom sound we accept, in seconds (a little slack for encoder padding).
-pub const MAX_SECONDS: f64 = 5.0;
+pub const MAX_SECONDS: f64 = 8.0;
 const SLACK_SECONDS: f64 = 0.25;
-/// Largest file we accept; 5 s of uncompressed 48 kHz stereo is under 2 MB.
+/// Largest file we accept; 8 s of uncompressed 48 kHz stereo is about 1.5 MB.
 pub const MAX_BYTES: usize = 5 * 1024 * 1024;
 pub const EXTENSIONS: [&str; 6] = ["wav", "mp3", "ogg", "flac", "m4a", "aac"];
 
@@ -110,8 +110,8 @@ mod tests {
     fn accepts_short_audio_and_rejects_long_or_garbage() {
         let secs = validate(wav(3.0)).unwrap();
         assert!((secs - 3.0).abs() < 0.05);
-        assert!(validate(wav(5.2)).is_ok(), "small encoder slack is fine");
-        assert!(validate(wav(8.0)).unwrap_err().starts_with("too_long"));
+        assert!(validate(wav(8.2)).is_ok(), "small encoder slack is fine");
+        assert!(validate(wav(11.0)).unwrap_err().starts_with("too_long"));
         assert_eq!(validate(b"not audio at all".to_vec()).unwrap_err(), "unsupported");
     }
 

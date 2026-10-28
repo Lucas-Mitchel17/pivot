@@ -18,7 +18,7 @@ src-tauri/            Tauri app
   src/lib.rs          plugins, 1-second clock, main window hides instead of closing
   src/tray.rs         tray / top bar icon: countdown and favorites menu
   src/alerts.rs       always-on-top alert window + system notification
-  src/sound.rs        alert sound through rodio: built-in synthesized chime or a custom file (≤ 5 s), with volume
+  src/sound.rs        alert sound through rodio: built-in synthesized chime or a custom file (≤ 8 s), with volume
   src/commands.rs     commands the windows call
   src/main.rs         terminal: status/log/list read the database directly
 src/                  frontend (TypeScript + Vite, no framework)
@@ -56,7 +56,7 @@ assets/               source SVGs for the app and tray icons
   - Deleting a user type moves its timers, reminders and history to "Other".
 - **Sound:** the alert plays through rodio at the volume set in Settings (0–100).
   - The default is a chime synthesized at runtime, so no audio file is shipped.
-  - A custom file must decode (wav, mp3, ogg, flac, m4a, aac) and last at most 5 s. It is copied to the data dir.
+  - A custom file must decode (wav, mp3, ogg, flac, m4a, aac) and last at most 8 s. It is copied to the data dir.
 - **Deleting** a timer, reminder or type asks for confirmation in a modal. **Settings → History** deletes finished history (all, or older than 30 days); open sessions, timers, reminders and types stay.
 - **Updates:** `tauri-plugin-updater` reads `latest.json` from the latest GitHub release, which `tauri-action` generates and signs.
   - The check runs quietly at startup; Settings → Updates shows the status and a manual button.

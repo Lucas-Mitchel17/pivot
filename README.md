@@ -7,7 +7,7 @@ A posture timer for switching between standing, sitting and taking breaks while 
 - Recurring reminders (e.g. "Drink water" every hour, 9:00–18:00, Monday to Friday)
 - Day and week history: time per type, switches between types, reminders done
 - Your own types (e.g. "Active break"), each with its own color in the history
-- Alert volume with a test button, or your own sound (up to 5 seconds)
+- Alert volume with a test button, or your own sound (up to 8 seconds)
 - Updates from inside the app (Settings → Updates)
 - Light and dark themes, built on the Lucas Mitchel Dev design system
 - English and Brazilian Portuguese
