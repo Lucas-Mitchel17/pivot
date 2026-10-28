@@ -63,6 +63,18 @@ pivot/
 - **Tema claro/escuro:** por padrão segue o GNOME (`Adw.StyleManager`); botão no topo da janela para forçar Sistema / Claro / Escuro, salvo em `settings` no SQLite. O alerta segue o mesmo tema.
 - **Histórico:** lista por dia, com resumo de tempo em pé e sentado, trocas de posição e água bebida (os lembretes têm o botão "Bebi ✓").
 
+## Visual, idiomas e assinatura
+- **Design system:** o mesmo do Lucas Mitchel Dev (`~/Personal/Trabalho/Empresa/mitchel-design-system`, tema `lucas-mitchel-dev`).
+  - Escuro por padrão, com modo claro. Os papéis semânticos (`--surface-*`, `--text-*`, `--action-*`, `--border-*`, `--brand-mark-*`) viram um CSS do GTK em `pivot/ui/style.css`, com os mesmos hex dos dois modos.
+  - No escuro, a cor de ação é o gelo `#7de3ff` com texto `#05070e`. No claro, é o azul `#3f6bff`.
+  - Fontes: Chakra Petch (títulos), IBM Plex Sans (texto) e IBM Plex Mono (contagem e horários). Se a fonte não estiver instalada, o app usa a do sistema.
+- **Idiomas:** português (pt-BR) e inglês, usando `gettext`.
+  - Por padrão segue o idioma do sistema, e dá para trocar nas preferências.
+  - As traduções ficam em `po/pt_BR.po` e `po/en.po`, e os textos da extensão também passam pelo gettext.
+- **Assinatura:** o rodapé da janela e o fim do menu da barra mostram o logo (`lucas-mitchel-dev-mark-lockup.svg`, com o gradiente gelo → azul).
+  - Em pt-BR: "Desenvolvido por [logo] Lucas Mitchel Dev"; em inglês: "Sponsored by [logo] Lucas Mitchel Dev".
+  - O texto é um link para https://lucasmitchel.dev.
+
 ## Como funciona
 - **Processo único** (`Adw.Application`, id `io.github.lucasmitchel.Pivot`, `HANDLES_COMMAND_LINE`). Ele inicia junto com o login, em segundo plano. Rodar `pivot start em-pe` no terminal repassa o comando para a instância que já está rodando, um recurso que o GApplication já tem.
 - **Linha de comando:**
