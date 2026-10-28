@@ -16,6 +16,7 @@ const S = {
   "tab.favorites": ["Favoritos", "Favorites"],
   "tab.automatic": ["Automáticos", "Automatic"],
   "tab.history": ["Histórico", "History"],
+  "tab.settings": ["Configurações", "Settings"],
   sections: ["Seções", "Sections"],
   add: ["Novo", "New"],
   settings: ["Tema e idioma", "Theme and language"],
@@ -42,7 +43,7 @@ const S = {
   "fav.star.off": ["Pôr {title} nos favoritos", "Add {title} to favorites"],
   "fav.play": ["Iniciar {title}", "Start {title}"],
   "f.title": ["Título", "Title"],
-  "f.minutes": ["Minutos", "Minutes"],
+  "f.minutes": ["Tempo (min ou min:seg)", "Time (min or min:sec)"],
   "f.type": ["Tipo", "Type"],
   "f.next": ["Quando acabar, sugerir", "When it ends, suggest"],
   "f.next.none": ["Nada", "Nothing"],
@@ -56,6 +57,9 @@ const S = {
   "err.time": ["Use o formato HH:MM.", "Use the HH:MM format."],
   "err.window": ["O fim tem que ser depois do início.", "The end has to be after the start."],
   "err.days": ["Escolha pelo menos um dia.", "Pick at least one day."],
+  "err.minutesFormat": ["Use minutos (15) ou minutos:segundos (1:30).", "Use minutes (15) or minutes:seconds (1:30)."],
+  "err.name": ["Dê um nome.", "Give it a name."],
+  "err.duplicate": ["Já existe um tipo com esse nome.", "There is already a type with that name."],
 
   "auto.master": ["Lembretes automáticos", "Automatic reminders"],
   "auto.master.sub": ["Desligue durante reuniões ou na folga", "Turn off during meetings or on days off"],
@@ -87,20 +91,17 @@ const S = {
   "hist.prev": ["Anterior", "Previous"],
   "hist.next": ["Próximo", "Next"],
   "hist.period": ["Período", "Period"],
-  "hist.stand": ["Em pé", "Standing"],
-  "hist.sit": ["Sentado", "Sitting"],
   "hist.switches": ["Trocas", "Switches"],
-  "hist.switches.note": ["de posição", "of position"],
-  "hist.water": ["Água", "Water"],
+  "hist.switches.note": ["mudanças de tipo", "changes of type"],
   "hist.pct": ["{pct}% do tempo", "{pct}% of the time"],
-  "hist.skipped": ["{n} lembretes pulados", "{n} reminders skipped"],
-  "hist.skipped.none": ["nenhum pulado", "none skipped"],
+  "hist.reminders": ["{done} de {total} feitos", "{done} of {total} done"],
+  "hist.tiles": ["Resumo por tipo", "Summary by type"],
   "hist.timeline": ["Linha do dia", "Day timeline"],
   "hist.now": ["agora", "now"],
   "hist.log": ["Registro", "Log"],
   "hist.days": ["Dias", "Days"],
   "hist.empty": ["Nada registrado nesse dia.", "Nothing logged that day."],
-  "hist.dayRow": ["em pé {stand} · sentado {sit} · água {water}", "standing {stand} · sitting {sit} · water {water}"],
+  "hist.dayRow.none": ["nada registrado", "nothing logged"],
   "src.cli": ["terminal", "terminal"],
   "src.menu": ["menu", "menu"],
   "src.app": ["app", "app"],
@@ -118,7 +119,8 @@ const S = {
   "alert.title.sit": ["Hora de sentar", "Time to sit"],
   "alert.title.break": ["Hora da pausa", "Time for a break"],
   "alert.title.focus": ["Hora de focar", "Time to focus"],
-  "alert.title.done": ["{title} acabou", "{title} is done"],
+  "alert.title.done": ["\"{title}\" acabou", "\"{title}\" is done"],
+  "alert.title.custom": ["Hora de: {type}", "Time for: {type}"],
   "alert.body": ["{title}: {min} concluídos.", "{title}: {min} done."],
   "alert.body.next": ["{title}: {min} concluídos. Próximo: {next}.", "{title}: {min} done. Up next: {next}."],
   "alert.start": ["Começar {next}", "Start {next}"],
@@ -128,6 +130,29 @@ const S = {
   "alert.done": ["Feito", "Done"],
   "alert.skip": ["Pular", "Skip"],
   "alert.note": ["Fica aberto até você responder", "Stays open until you answer"],
+
+  "set.appearance": ["Aparência", "Appearance"],
+  "set.sound": ["Som do alerta", "Alert sound"],
+  "set.volume": ["Volume", "Volume"],
+  "set.test": ["Testar", "Test"],
+  "set.sound.builtin": ["Som padrão do Pivot", "Pivot's built-in chime"],
+  "set.sound.custom": ["Som próprio: {name}", "Custom sound: {name}"],
+  "set.sound.pick": ["Escolher arquivo…", "Choose a file…"],
+  "set.sound.reset": ["Voltar ao padrão", "Use the built-in chime"],
+  "set.sound.hint": ["Até 5 segundos · wav, mp3, ogg, flac, m4a ou aac", "Up to 5 seconds · wav, mp3, ogg, flac, m4a or aac"],
+  "set.sound.saved": ["Som salvo ({secs} s).", "Sound saved ({secs} s)."],
+  "set.sound.err.extension": ["Formato não suportado. Use wav, mp3, ogg, flac, m4a ou aac.", "Unsupported format. Use wav, mp3, ogg, flac, m4a or aac."],
+  "set.sound.err.too_big": ["Arquivo grande demais (máximo 5 MB).", "File too large (5 MB max)."],
+  "set.sound.err.unsupported": ["Não consegui ler esse áudio.", "Couldn't read that audio."],
+  "set.sound.err.too_long": ["O áudio tem {secs} s. O máximo é 5 s.", "The audio is {secs} s long. The maximum is 5 s."],
+  "set.types": ["Tipos", "Types"],
+  "set.types.hint": ["Cada tipo aparece separado no histórico, com a sua cor.", "Each type shows up on its own in History, with its color."],
+  "set.types.builtin": ["padrão", "built-in"],
+  "set.types.new": ["Novo tipo", "New type"],
+  "set.types.edit": ["Editar tipo", "Edit type"],
+  "set.types.name": ["Nome", "Name"],
+  "set.types.color": ["Cor", "Color"],
+  "set.types.deleteHint": ["Timers e histórico desse tipo passam para \"Outro\".", "Timers and history of this type move to \"Other\"."],
 } as const;
 
 type Key = keyof typeof S;
@@ -148,7 +173,12 @@ export function t(key: Key, vars: Record<string, string | number> = {}): string 
   return out;
 }
 
-export const cat = (c: Category) => t(`cat.${c}` as Key);
+/** Built-ins are translated; the user's own types keep their name. */
+export const catName = (c: Category | undefined) => (c ? (c.key ? t(`cat.${c.key}` as Key) : c.name) : "");
+
+/** CSS color for a type: theme variable for built-ins, stored hex for the user's own. */
+export const catColor = (c: Category | undefined) =>
+  c ? (c.key ? `var(--cat-${c.key})` : (c.color ?? "var(--text-muted)")) : "var(--text-muted)";
 export const src = (s: string) => t(`src.${s}` as Key);
 export const out = (o: string) => t(`out.${o}` as Key);
 
@@ -162,14 +192,42 @@ const DEFAULT_TITLES: Record<string, string> = {
 };
 export const title = (s: string) => (lang === "en" ? (DEFAULT_TITLES[s] ?? s) : s);
 
-/** 25 -> "25m", 90 -> "1h30", 0.5 -> "30s". */
+/** 25 -> "25m", 90 -> "1h30", 1.5 -> "1:30", 0.5 -> "0:30". */
 export function fmtMinutes(minutes: number): string {
   const total = Math.round(minutes * 60);
-  if (total < 60) return `${total}s`;
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
+  const sec = total % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (sec) return h ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
   if (!h) return `${m}m`;
-  return m ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
+  return m ? `${h}h${pad(m)}` : `${h}h`;
+}
+
+/** Minutes field text: "15" or "1:30" (minutes:seconds). null when invalid. */
+export function parseMinutesField(text: string): number | null {
+  const m = /^(\d{1,4})(?::(\d{2}))?$/.exec(text.trim());
+  if (!m) return null;
+  const secs = m[2] === undefined ? 0 : Number(m[2]);
+  if (secs > 59) return null;
+  const minutes = Number(m[1]) + secs / 60;
+  return minutes > 0 ? minutes : null;
+}
+
+/** 1.5 -> "1:30", 15 -> "15". */
+export function minutesField(minutes: number): string {
+  const total = Math.round(minutes * 60);
+  const m = Math.floor(total / 60);
+  const sec = total % 60;
+  return sec ? `${m}:${String(sec).padStart(2, "0")}` : String(m);
+}
+
+/** Keeps only digits and a single ":" followed by at most two digits. */
+export function sanitizeMinutesField(text: string): string {
+  const cleaned = text.replace(/[^\d:]/g, "");
+  const i = cleaned.indexOf(":");
+  if (i === -1) return cleaned.slice(0, 4);
+  return cleaned.slice(0, Math.min(i, 4)) + ":" + cleaned.slice(i + 1).replace(/:/g, "").slice(0, 2);
 }
 
 /** 6300 s -> "1h45", 2700 -> "45min". */

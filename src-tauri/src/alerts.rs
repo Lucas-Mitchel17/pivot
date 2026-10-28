@@ -38,7 +38,8 @@ pub fn open(app: &AppHandle, s: &Session) {
         }
     }
 
-    crate::sound::play_alarm();
+    let (volume, file) = crate::sound_settings(app);
+    crate::sound::play(volume, file);
 
     let body = if s.recurring_id.is_some() { String::new() } else { format!("\"{title}\" {}", tr(lang, "notify.timer")) };
     let _ = app

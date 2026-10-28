@@ -2,15 +2,24 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
-export type Category = "stand" | "sit" | "break" | "focus" | "water" | "other";
-export const CATEGORIES: Category[] = ["stand", "sit", "break", "focus", "water", "other"];
+export type BuiltinKey = "stand" | "sit" | "break" | "focus" | "water" | "other";
+
+export interface Category {
+  id: number;
+  /** Set for built-in categories, null for the user's own. */
+  key: BuiltinKey | null;
+  name: string;
+  /** "#rrggbb" for user categories; built-ins take their color from the theme. */
+  color: string | null;
+  sort_order: number;
+}
 
 export interface Preset {
   id: number;
   slug: string;
   title: string;
   minutes: number;
-  category: Category;
+  category_id: number;
   next_preset_id: number | null;
   favorite: boolean;
   sort_order: number;
@@ -19,7 +28,7 @@ export interface Preset {
 export interface Recurring {
   id: number;
   title: string;
-  category: Category;
+  category_id: number;
   every_min: number;
   start_time: string;
   end_time: string;
@@ -34,7 +43,7 @@ export interface Session {
   preset_id: number | null;
   recurring_id: number | null;
   title: string;
-  category: Category;
+  category_id: number;
   source: "cli" | "menu" | "app" | "auto" | "alert";
   started_at: number;
   planned_s: number;
@@ -53,25 +62,34 @@ export interface AppState {
   now: number;
 }
 
+export interface CategoryStat {
+  category_id: number;
+  timer_s: number;
+  timers: number;
+  reminders_done: number;
+  reminders_total: number;
+}
+
 export interface Summary {
   start: number;
   end: number;
-  stand_s: number;
-  sit_s: number;
+  tracked_s: number;
   switches: number;
-  water_done: number;
-  water_total: number;
   reminders_skipped: number;
+  categories: CategoryStat[];
   sessions: Session[];
 }
 
 export interface DayRow {
   date: string;
-  stand_s: number;
-  sit_s: number;
+  tracked_s: number;
   switches: number;
-  water_done: number;
-  water_total: number;
+  categories: CategoryStat[];
+}
+
+export interface SoundInfo {
+  volume: number;
+  custom_name: string | null;
 }
 
 export interface AlertInfo {
@@ -91,8 +109,8 @@ export const api = {
   deletePreset: (id: number) => invoke("delete_preset", { id }),
   setFavorite: (id: number, favorite: boolean) => invoke("set_favorite", { id, favorite }),
   startPreset: (id: number) => invoke("start_preset", { id }),
-  startCustom: (title: string, minutes: number, category: Category) =>
-    invoke("start_custom", { title, minutes, category }),
+  startCustom: (title: string, minutes: number, categoryId: number) =>
+    invoke("start_custom", { title, minutes, categoryId }),
   stop: () => invoke("stop_timer"),
   recurring: () => invoke<Recurring[]>("list_recurring"),
   saveRecurring: (input: RecurringInput) => invoke<number>("save_recurring", { input }),
@@ -106,6 +124,15 @@ export const api = {
   answer: (id: number, action: Answer, snoozeMin = 5) => invoke("answer", { id, action, snoozeMin }),
   setSetting: (key: "theme" | "lang", value: string) => invoke("set_setting", { key, value }),
   openSite: () => invoke("open_site"),
+  categories: () => invoke<Category[]>("list_categories"),
+  saveCategory: (input: { id: number | null; name: string; color: string }) => invoke<number>("save_category", { input }),
+  deleteCategory: (id: number) => invoke("delete_category", { id }),
+  soundInfo: () => invoke<SoundInfo>("sound_info"),
+  setVolume: (volume: number) => invoke("set_volume", { volume }),
+  testSound: (volume?: number) => invoke("test_sound", { volume }),
+  setCustomSound: (name: string, bytes: Uint8Array) =>
+    invoke<number>("set_custom_sound", { name, bytes: Array.from(bytes) }),
+  resetSound: () => invoke("reset_sound"),
 };
 
 /** Runs `fn` whenever the app state changes (any window, tray or terminal). */

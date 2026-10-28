@@ -1,26 +1,41 @@
 //! Day and week summaries for the History tab and `pivot log`.
+//!
+//! Every category is tracked on its own: timers add up time, reminders count
+//! done / total. "Switches" counts every change from one timer category to
+//! another, in the order the timers ran.
 
 use crate::db::{day_start, Db, Result, Session};
 use chrono::{Datelike, Duration, NaiveDate};
 use serde::Serialize;
+use std::collections::BTreeMap;
+
+#[derive(Debug, Default, Clone, PartialEq, Serialize)]
+pub struct CategoryStat {
+    pub category_id: i64,
+    /// Seconds spent in timers of this category.
+    pub timer_s: f64,
+    pub timers: i64,
+    /// Reminders of this category answered "done" / fired.
+    pub reminders_done: i64,
+    pub reminders_total: i64,
+}
 
 #[derive(Debug, Default, Serialize)]
 pub struct Summary {
     pub start: f64,
     pub end: f64,
-    pub stand_s: f64,
-    pub sit_s: f64,
+    /// Sum of all timer time, for percentages.
+    pub tracked_s: f64,
     pub switches: i64,
-    pub water_done: i64,
-    pub water_total: i64,
     pub reminders_skipped: i64,
+    /// Ordered by timer time, then reminders fired.
+    pub categories: Vec<CategoryStat>,
     pub sessions: Vec<Session>,
 }
 
 impl Summary {
-    pub fn stand_pct(&self) -> i64 {
-        let total = self.stand_s + self.sit_s;
-        if total > 0.0 { (100.0 * self.stand_s / total).round() as i64 } else { 0 }
+    pub fn category(&self, id: i64) -> Option<&CategoryStat> {
+        self.categories.iter().find(|c| c.category_id == id)
     }
 }
 
@@ -31,28 +46,38 @@ pub fn week_start(day: NaiveDate) -> NaiveDate {
 pub fn summarize(db: &Db, start: f64, end: f64, now: f64) -> Result<Summary> {
     let mut out = Summary { start, end, ..Default::default() };
     out.sessions = db.sessions_between(start, end)?;
-    let mut last_posture: Option<&str> = None;
+    let mut by_cat: BTreeMap<i64, CategoryStat> = BTreeMap::new();
+    let mut last_timer_cat: Option<i64> = None;
     for s in &out.sessions {
-        let posture = s.recurring_id.is_none() && (s.category == "stand" || s.category == "sit");
-        if posture {
-            let stop = s.ended_at.unwrap_or(now);
-            let secs = (stop.min(end) - s.started_at.max(start)).max(0.0);
-            if s.category == "stand" { out.stand_s += secs } else { out.sit_s += secs }
-            if last_posture.is_some_and(|c| c != s.category) {
-                out.switches += 1;
+        let stat = by_cat
+            .entry(s.category_id)
+            .or_insert_with(|| CategoryStat { category_id: s.category_id, ..Default::default() });
+        if s.recurring_id.is_some() {
+            stat.reminders_total += 1;
+            match s.outcome.as_deref() {
+                Some("done") => stat.reminders_done += 1,
+                Some("skipped") => out.reminders_skipped += 1,
+                _ => {}
             }
-            last_posture = Some(&s.category);
+            continue;
         }
-        if s.category == "water" {
-            out.water_total += 1;
-            if s.outcome.as_deref() == Some("done") {
-                out.water_done += 1;
-            }
+        let stop = s.ended_at.unwrap_or(now);
+        let secs = (stop.min(end) - s.started_at.max(start)).max(0.0);
+        stat.timer_s += secs;
+        stat.timers += 1;
+        out.tracked_s += secs;
+        if last_timer_cat.is_some_and(|c| c != s.category_id) {
+            out.switches += 1;
         }
-        if s.recurring_id.is_some() && s.outcome.as_deref() == Some("skipped") {
-            out.reminders_skipped += 1;
-        }
+        last_timer_cat = Some(s.category_id);
     }
+    out.categories = by_cat.into_values().collect();
+    out.categories.sort_by(|a, b| {
+        b.timer_s
+            .partial_cmp(&a.timer_s)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(b.reminders_total.cmp(&a.reminders_total))
+    });
     Ok(out)
 }
 
@@ -79,10 +104,11 @@ pub fn fmt_duration(seconds: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::CategoryInput;
     use crate::engine::{Answer, Engine};
 
     #[test]
-    fn counts_posture_time_switches_and_water() {
+    fn tracks_each_category_switches_and_reminders() {
         let mut e = Engine::new(Db::in_memory().unwrap());
         let day = NaiveDate::from_ymd_opt(2026, 10, 26).unwrap();
         let t = day_start(day) + 9.0 * 3600.0;
@@ -91,15 +117,35 @@ mod tests {
         let b = e.answer(a, Answer::Next, 5.0, t + 2700.0).unwrap().unwrap(); // -> standing
         e.answer(b, Answer::Next, 5.0, t + 2700.0 + 900.0).unwrap(); // -> sitting, still running
         let water = e.tick(day_start(day) + 10.0 * 3600.0).unwrap();
-        let w = water.iter().find(|s| s.category == "water").unwrap().id;
+        let w = water.iter().find(|s| s.recurring_id.is_some()).unwrap().id;
         e.answer(w, Answer::Done, 0.0, day_start(day) + 10.0 * 3600.0 + 5.0).unwrap();
 
         let now = t + 2700.0 + 900.0 + 600.0;
         let s = summarize_day(&e.db, day, now).unwrap();
-        assert_eq!(s.sit_s, 2700.0 + 600.0);
-        assert_eq!(s.stand_s, 900.0);
+        let id = |k| e.db.category_id(k).unwrap();
+        assert_eq!(s.category(id("sit")).unwrap().timer_s, 2700.0 + 600.0);
+        assert_eq!(s.category(id("stand")).unwrap().timer_s, 900.0);
+        assert_eq!(s.tracked_s, 2700.0 + 600.0 + 900.0);
         assert_eq!(s.switches, 2);
-        assert_eq!((s.water_done, s.water_total), (1, 1));
+        let water = s.category(id("water")).unwrap();
+        assert_eq!((water.reminders_done, water.reminders_total), (1, 1));
+        assert_eq!(s.categories[0].category_id, id("sit"), "sorted by time");
+    }
+
+    #[test]
+    fn user_categories_show_up_on_their_own() {
+        let mut e = Engine::new(Db::in_memory().unwrap());
+        let active_break = e
+            .db
+            .save_category(&CategoryInput { id: None, name: "Pausa com atividade".into(), color: "#f5c451".into() })
+            .unwrap();
+        let day = NaiveDate::from_ymd_opt(2026, 10, 26).unwrap();
+        let t = day_start(day) + 8.0 * 3600.0;
+        let id = e.start_custom("Caminhar", 10.0, active_break, "app", t).unwrap();
+        e.answer(id, Answer::Done, 5.0, t + 600.0).unwrap();
+        let s = summarize_day(&e.db, day, t + 700.0).unwrap();
+        assert_eq!(s.category(active_break).unwrap().timer_s, 600.0);
+        assert_eq!(s.switches, 0);
     }
 
     #[test]

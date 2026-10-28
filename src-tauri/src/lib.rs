@@ -26,6 +26,16 @@ pub fn changed(app: &AppHandle) {
     let _ = app.emit(CHANGED, ());
 }
 
+/// Volume (0–100) and custom sound file from the settings.
+pub fn sound_settings(app: &AppHandle) -> (u8, Option<std::path::PathBuf>) {
+    let state = app.state::<AppState>();
+    let engine = state.engine.lock().unwrap();
+    let volume = engine.db.setting("sound_volume").parse().unwrap_or(60);
+    let file = engine.db.setting("sound_file");
+    let path = (!file.is_empty()).then(|| db::data_dir().join(file)).filter(|p| p.exists());
+    (volume, path)
+}
+
 pub fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.unminimize();
@@ -99,6 +109,14 @@ pub fn run(cmd: Command) {
             commands::alert_info,
             commands::answer,
             commands::set_setting,
+            commands::list_categories,
+            commands::save_category,
+            commands::delete_category,
+            commands::sound_info,
+            commands::set_volume,
+            commands::test_sound,
+            commands::set_custom_sound,
+            commands::reset_sound,
             commands::open_site,
         ])
         .on_window_event(|window, event| {

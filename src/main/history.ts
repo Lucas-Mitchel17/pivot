@@ -1,7 +1,7 @@
-// History tab: day or week summary, the day's timeline and the log.
-import { api, type DayRow, type Session, type Summary } from "../lib/api";
+// History tab: day or week summary (one tile per type), the day's timeline and the log.
+import { api, type Category, type CategoryStat, type DayRow, type Session, type Summary } from "../lib/api";
 import { h, icon } from "../lib/dom";
-import { dayLabel, fmtDuration, hhmm, out, src, t, title } from "../lib/i18n";
+import { catColor, catName, dayLabel, fmtDuration, hhmm, out, src, t, title } from "../lib/i18n";
 import { ICONS } from "../lib/icons";
 import { segmented } from "./ui";
 
@@ -12,11 +12,14 @@ const iso = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const isToday = (d: Date) => iso(d) === iso(new Date());
 
-const catColor = (c: string) =>
-  ({ stand: "var(--cat-stand)", sit: "var(--cat-sit)", break: "var(--cat-break)", water: "var(--cat-water)" })[c] ??
-  "var(--text-muted)";
+type Cats = Map<number, Category>;
 
-function tiles(s: Summary) {
+/** "Standing 1h45" for timer types, "Water 5/9" for reminder-only ones. */
+function statValue(c: CategoryStat): string {
+  return c.timers === 0 && c.reminders_total > 0 ? `${c.reminders_done}/${c.reminders_total}` : fmtDuration(c.timer_s);
+}
+
+function tiles(s: Summary, cats: Cats) {
   const tile = (label: string, dot: string, value: string, note: string) =>
     h(
       "div",
@@ -25,26 +28,22 @@ function tiles(s: Summary) {
       h("span", { class: "tile-value" }, value),
       h("span", { class: "tile-note" }, note),
     );
-  const total = s.stand_s + s.sit_s;
-  const pct = (x: number) => (total ? Math.round((100 * x) / total) : 0);
-  return h(
-    "div",
-    { class: "tiles" },
-    tile(t("hist.stand"), "var(--cat-stand)", fmtDuration(s.stand_s), t("hist.pct", { pct: pct(s.stand_s) })),
-    tile(t("hist.sit"), "var(--cat-sit)", fmtDuration(s.sit_s), t("hist.pct", { pct: pct(s.sit_s) })),
-    tile(t("hist.switches"), "var(--text-muted)", String(s.switches), t("hist.switches.note")),
-    tile(
-      t("hist.water"),
-      "var(--cat-water)",
-      `${s.water_done}/${s.water_total}`,
-      s.reminders_skipped ? t("hist.skipped", { n: s.reminders_skipped }) : t("hist.skipped.none"),
-    ),
-  );
+  const pct = (x: number) => (s.tracked_s ? Math.round((100 * x) / s.tracked_s) : 0);
+  const items = s.categories.map((c) => {
+    const cat = cats.get(c.category_id);
+    const note =
+      c.timers === 0 && c.reminders_total > 0
+        ? t("hist.reminders", { done: c.reminders_done, total: c.reminders_total })
+        : t("hist.pct", { pct: pct(c.timer_s) });
+    return tile(catName(cat), catColor(cat), statValue(c), note);
+  });
+  items.push(tile(t("hist.switches"), "var(--text-muted)", String(s.switches), t("hist.switches.note")));
+  return h("div", { class: "tiles", "aria-label": t("hist.tiles") }, items);
 }
 
-function timeline(s: Summary) {
+function timeline(s: Summary, cats: Cats) {
   const now = Date.now() / 1000;
-  const timed = s.sessions.filter((x) => x.planned_s > 0);
+  const timed = s.sessions.filter((x) => x.recurring_id === null);
   // From 9h (or the first session) to 18h (or now / the last session).
   const nine = s.start + 9 * 3600;
   const six = s.start + 18 * 3600;
@@ -56,9 +55,10 @@ function timeline(s: Summary) {
   const pos = (ts: number) => ((Math.min(Math.max(ts, from), to) - from) / span) * 100;
   const segments = timed.map((x) => {
     const end = x.ended_at ?? Math.min(now, s.end);
+    const cat = cats.get(x.category_id);
     return h("span", {
-      title: `${title(x.title)} · ${hhmm(x.started_at)}–${hhmm(end)}`,
-      style: `left:${pos(x.started_at)}%;width:${Math.max(0.4, pos(end) - pos(x.started_at))}%;background:${catColor(x.category)}`,
+      title: `${title(x.title)} · ${catName(cat)} · ${hhmm(x.started_at)}–${hhmm(end)}`,
+      style: `left:${pos(x.started_at)}%;width:${Math.max(0.4, pos(end) - pos(x.started_at))}%;background:${catColor(cat)}`,
     });
   });
   const marks: string[] = [];
@@ -72,10 +72,11 @@ function timeline(s: Summary) {
   );
 }
 
-function logRow(x: Session) {
-  const span = x.planned_s === 0 ? hhmm(x.started_at) : `${hhmm(x.started_at)}–${x.ended_at ? hhmm(x.ended_at) : "…"}`;
+function logRow(x: Session, cats: Cats) {
+  const cat = cats.get(x.category_id);
+  const span = x.recurring_id !== null ? hhmm(x.started_at) : `${hhmm(x.started_at)}–${x.ended_at ? hhmm(x.ended_at) : "…"}`;
   const outcome = x.outcome
-    ? x.outcome === "done" && x.category === "water"
+    ? x.outcome === "done" && x.recurring_id !== null
       ? t("out.done.water")
       : out(x.outcome)
     : t("out.running");
@@ -83,19 +84,20 @@ function logRow(x: Session) {
     "li",
     { class: "row log-row" },
     h("span", { class: "log-time" }, span),
-    h("span", { class: "dot", style: `background:${catColor(x.category)}` }),
+    h("span", { class: "dot", style: `background:${catColor(cat)}`, title: catName(cat) }),
     h("span", { class: "row-title", style: "flex:1" }, title(x.title)),
     h("span", { class: "chip" }, src(x.source)),
     h("span", { class: `log-outcome${x.outcome === "skipped" ? " bad" : ""}` }, outcome),
   );
 }
 
-function dayRows(days: DayRow[]) {
+function dayRows(days: DayRow[], cats: Cats) {
   return h(
     "ul",
     { class: "card list" },
     days.map((d) => {
       const date = new Date(`${d.date}T12:00:00`);
+      const parts = d.categories.map((c) => `${catName(cats.get(c.category_id))} ${statValue(c)}`);
       return h(
         "li",
         { class: "row" },
@@ -111,22 +113,15 @@ function dayRows(days: DayRow[]) {
             },
           },
           h("span", { class: "row-title" }, dayLabel(date)),
-          h(
-            "span",
-            { class: "row-sub" },
-            t("hist.dayRow", {
-              stand: fmtDuration(d.stand_s),
-              sit: fmtDuration(d.sit_s),
-              water: `${d.water_done}/${d.water_total}`,
-            }),
-          ),
+          h("span", { class: "row-sub" }, parts.length ? parts.join(" · ") : t("hist.dayRow.none")),
         ),
       );
     }),
   );
 }
 
-export async function renderHistory(rerender: () => void): Promise<HTMLElement> {
+export async function renderHistory(categories: Category[], rerender: () => void): Promise<HTMLElement> {
+  const cats: Cats = new Map(categories.map((c) => [c.id, c]));
   const { summary, days } = await api.history(iso(day), week);
   const move = (dir: number) => {
     const d = new Date(day);
@@ -160,16 +155,16 @@ export async function renderHistory(rerender: () => void): Promise<HTMLElement> 
         rerender();
       }),
     ),
-    tiles(summary),
-    week ? null : timeline(summary),
+    tiles(summary, cats),
+    week ? null : timeline(summary, cats),
     h(
       "section",
       { class: "section" },
       h("h2", {}, t(week ? "hist.days" : "hist.log")),
       week
-        ? dayRows(days)
+        ? dayRows(days, cats)
         : summary.sessions.length
-          ? h("ul", { class: "card list" }, [...summary.sessions].reverse().map(logRow))
+          ? h("ul", { class: "card list" }, [...summary.sessions].reverse().map((x) => logRow(x, cats)))
           : h("p", { class: "card empty" }, t("hist.empty")),
     ),
   );

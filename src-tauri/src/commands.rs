@@ -1,8 +1,8 @@
 //! Commands the windows call through `invoke`.
 
-use crate::{alerts, changed, tray::SITE, AppState};
+use crate::{alerts, changed, sound, sound_settings, tray::SITE, AppState};
 use chrono::{Duration, NaiveDate};
-use pivot_core::db::{self, local_date, Preset, PresetInput, Recurring, RecurringInput, Session};
+use pivot_core::db::{self, local_date, Category, CategoryInput, Preset, PresetInput, Recurring, RecurringInput, Session};
 use pivot_core::engine::{Answer, Engine};
 use pivot_core::stats::{self, Summary};
 use serde::Serialize;
@@ -89,8 +89,8 @@ pub fn start_preset(app: AppHandle, state: State<AppState>, id: i64) -> Res<()> 
 }
 
 #[tauri::command]
-pub fn start_custom(app: AppHandle, state: State<AppState>, title: String, minutes: f64, category: String) -> Res<()> {
-    engine(&state).start_custom(&title, minutes, &category, "app", db::now())?;
+pub fn start_custom(app: AppHandle, state: State<AppState>, title: String, minutes: f64, category_id: i64) -> Res<()> {
+    engine(&state).start_custom(&title, minutes, category_id, "app", db::now())?;
     changed(&app);
     Ok(())
 }
@@ -167,11 +167,9 @@ pub fn pause_auto(app: AppHandle, state: State<AppState>, seconds: f64) -> Res<(
 #[derive(Serialize)]
 pub struct DayRow {
     date: String,
-    stand_s: f64,
-    sit_s: f64,
+    tracked_s: f64,
     switches: i64,
-    water_done: i64,
-    water_total: i64,
+    categories: Vec<stats::CategoryStat>,
 }
 
 #[derive(Serialize)]
@@ -196,11 +194,9 @@ pub fn history(state: State<AppState>, date: String, week: bool) -> Res<History>
         let s = stats::summarize_day(&e.db, d, now)?;
         days.push(DayRow {
             date: d.format("%Y-%m-%d").to_string(),
-            stand_s: s.stand_s,
-            sit_s: s.sit_s,
+            tracked_s: s.tracked_s,
             switches: s.switches,
-            water_done: s.water_done,
-            water_total: s.water_total,
+            categories: s.categories,
         });
     }
     Ok(History { summary: stats::summarize_week(&e.db, day, now)?, days })
@@ -250,6 +246,94 @@ pub fn set_setting(app: AppHandle, state: State<AppState>, key: String, value: S
     engine(&state).db.set_setting(&key, &value)?;
     changed(&app);
     Ok(())
+}
+
+// ---------- categories ----------
+
+#[tauri::command]
+pub fn list_categories(state: State<AppState>) -> Res<Vec<Category>> {
+    engine(&state).db.categories()
+}
+
+#[tauri::command]
+pub fn save_category(app: AppHandle, state: State<AppState>, input: CategoryInput) -> Res<i64> {
+    let id = engine(&state).db.save_category(&input)?;
+    changed(&app);
+    Ok(id)
+}
+
+#[tauri::command]
+pub fn delete_category(app: AppHandle, state: State<AppState>, id: i64) -> Res<()> {
+    engine(&state).db.delete_category(id)?;
+    changed(&app);
+    Ok(())
+}
+
+// ---------- sound ----------
+
+#[derive(Serialize)]
+pub struct SoundInfo {
+    volume: u8,
+    /// Original name of the custom file, `None` for the built-in chime.
+    custom_name: Option<String>,
+}
+
+#[tauri::command]
+pub fn sound_info(state: State<AppState>) -> Res<SoundInfo> {
+    let e = engine(&state);
+    let file = e.db.setting("sound_file");
+    Ok(SoundInfo {
+        volume: e.db.setting("sound_volume").parse().unwrap_or(60),
+        custom_name: (!file.is_empty() && db::data_dir().join(&file).exists()).then(|| e.db.setting("sound_name")),
+    })
+}
+
+#[tauri::command]
+pub fn set_volume(state: State<AppState>, volume: u8) -> Res<()> {
+    engine(&state).db.set_setting("sound_volume", &volume.min(100).to_string())
+}
+
+/// Plays the current sound; `volume` previews a slider value before it is saved.
+#[tauri::command]
+pub fn test_sound(app: AppHandle, volume: Option<u8>) -> Res<()> {
+    let (saved, file) = sound_settings(&app);
+    sound::play(volume.unwrap_or(saved), file);
+    Ok(())
+}
+
+/// Saves a custom alert sound. Errors: "extension", "too_big", "unsupported", "too_long:<s>".
+#[tauri::command]
+pub fn set_custom_sound(state: State<AppState>, name: String, bytes: Vec<u8>) -> Res<f64> {
+    let ext = std::path::Path::new(&name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .filter(|e| sound::EXTENSIONS.contains(&e.as_str()))
+        .ok_or("extension")?;
+    let seconds = sound::validate(bytes.clone())?;
+    let file = format!("alert-sound.{ext}");
+    let dir = db::data_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let e = engine(&state);
+    let old = e.db.setting("sound_file");
+    if !old.is_empty() && old != file {
+        let _ = std::fs::remove_file(dir.join(&old));
+    }
+    std::fs::write(dir.join(&file), bytes).map_err(|e| e.to_string())?;
+    e.db.set_setting("sound_file", &file)?;
+    e.db.set_setting("sound_name", &name)?;
+    Ok(seconds)
+}
+
+#[tauri::command]
+pub fn reset_sound(state: State<AppState>) -> Res<()> {
+    let e = engine(&state);
+    let old = e.db.setting("sound_file");
+    if !old.is_empty() {
+        let _ = std::fs::remove_file(db::data_dir().join(&old));
+    }
+    e.db.set_setting("sound_file", "")?;
+    e.db.set_setting("sound_name", "")
 }
 
 #[tauri::command]

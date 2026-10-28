@@ -40,20 +40,20 @@ impl Engine {
     }
 
     pub fn start_preset(&mut self, p: &Preset, source: &str, now: f64) -> Result<i64> {
-        self.start(&p.title, p.minutes, &p.category, source, Some(p.id), now)
+        self.start(&p.title, p.minutes, p.category_id, source, Some(p.id), now)
     }
 
-    pub fn start_custom(&mut self, title: &str, minutes: f64, category: &str, source: &str, now: f64) -> Result<i64> {
-        self.start(title, minutes, category, source, None, now)
+    pub fn start_custom(&mut self, title: &str, minutes: f64, category_id: i64, source: &str, now: f64) -> Result<i64> {
+        self.start(title, minutes, category_id, source, None, now)
     }
 
-    fn start(&mut self, title: &str, minutes: f64, category: &str, source: &str, preset: Option<i64>, now: f64) -> Result<i64> {
+    fn start(&mut self, title: &str, minutes: f64, category_id: i64, source: &str, preset: Option<i64>, now: f64) -> Result<i64> {
         if let Some(cur) = self.active()? {
             self.db.end_session(cur.id, "stopped", now)?;
             self.alerted.remove(&cur.id);
         }
         let planned = (minutes * 60.0).round().max(1.0) as i64;
-        self.db.start_session(title, category, source, planned, preset, None, now)
+        self.db.start_session(title, category_id, source, planned, preset, None, now)
     }
 
     pub fn stop(&mut self, now: f64) -> Result<Option<Session>> {
@@ -131,7 +131,7 @@ impl Engine {
                     self.alerted.remove(&old.id);
                 }
             }
-            fired.push(self.db.start_session(&rec.title, &rec.category, "auto", 0, None, Some(rec.id), now)?);
+            fired.push(self.db.start_session(&rec.title, rec.category_id, "auto", 0, None, Some(rec.id), now)?);
         }
         Ok(fired)
     }
@@ -186,8 +186,9 @@ mod tests {
     fn starting_a_timer_stops_the_previous_one() {
         let mut e = engine();
         let t0 = monday_at(8.0);
-        let a = e.start_custom("A", 10.0, "other", "cli", t0).unwrap();
-        let b = e.start_custom("B", 10.0, "other", "cli", t0 + 5.0).unwrap();
+        let other = e.db.category_id("other").unwrap();
+        let a = e.start_custom("A", 10.0, other, "cli", t0).unwrap();
+        let b = e.start_custom("B", 10.0, other, "cli", t0 + 5.0).unwrap();
         assert_eq!(e.db.session(a).unwrap().unwrap().outcome.as_deref(), Some("stopped"));
         assert_eq!(e.active().unwrap().unwrap().id, b);
     }
@@ -209,7 +210,8 @@ mod tests {
     fn snooze_makes_it_due_again_later() {
         let mut e = engine();
         let t0 = monday_at(8.0);
-        let id = e.start_custom("A", 1.0, "other", "cli", t0).unwrap();
+        let other = e.db.category_id("other").unwrap();
+        let id = e.start_custom("A", 1.0, other, "cli", t0).unwrap();
         assert_eq!(e.tick(t0 + 60.0).unwrap().len(), 1);
         e.answer(id, Answer::Snooze, 5.0, t0 + 70.0).unwrap();
         assert!(e.tick(t0 + 100.0).unwrap().is_empty());
@@ -262,7 +264,7 @@ mod tests {
         e.db.save_recurring(&RecurringInput {
             id: None,
             title: "Água fds".into(),
-            category: "water".into(),
+            category_id: e.db.category_id("water").unwrap(),
             every_min: 120,
             start_time: "10:00".into(),
             end_time: "20:00".into(),

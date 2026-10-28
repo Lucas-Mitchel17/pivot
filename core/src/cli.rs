@@ -7,7 +7,7 @@
 
 use crate::db::{local_date, Db, Result};
 use crate::engine::Engine;
-use crate::i18n::{display_title, fmt_left, fmt_minutes, tr, Lang};
+use crate::i18n::{category_name, display_title, fmt_left, fmt_minutes, tr, Lang};
 use crate::stats;
 use chrono::{Local, TimeZone};
 
@@ -53,11 +53,15 @@ pub fn parse(args: &[String]) -> Command {
     }
 }
 
-/// Minutes. "30" / "30m" -> 30, "90s" -> 1.5, "1h" -> 60, "1h30" -> 90.
+/// Minutes. "30" / "30m" -> 30, "1:30" -> 1.5, "90s" -> 1.5, "1h" -> 60, "1h30" -> 90.
 pub fn parse_duration(text: &str) -> Option<f64> {
     let t = text.trim().to_lowercase();
     if t.is_empty() {
         return None;
+    }
+    if let Some((m, s)) = t.split_once(':') {
+        let (m, s): (u32, u32) = (m.parse().ok()?, s.parse().ok()?);
+        return (s < 60 && t.len() - t.find(':')? == 3 && (m > 0 || s > 0)).then(|| m as f64 + s as f64 / 60.0);
     }
     let (hours, rest) = match t.split_once('h') {
         Some((h, r)) => (h.parse::<f64>().ok()?, r),
@@ -140,8 +144,11 @@ pub fn apply(engine: &mut Engine, cmd: &Command, now: f64) -> Result<()> {
         }
         Command::Custom { minutes, title } => {
             let title = title.clone().unwrap_or_else(|| fmt_minutes(*minutes));
-            let category = engine.db.find_preset(&title)?.map(|p| p.category).unwrap_or_else(|| "other".into());
-            engine.start_custom(&title, *minutes, &category, "cli", now)?;
+            let category = match engine.db.find_preset(&title)? {
+                Some(p) => p.category_id,
+                None => engine.db.category_id("other")?,
+            };
+            engine.start_custom(&title, *minutes, category, "cli", now)?;
         }
         Command::Stop => {
             engine.stop(now)?;
@@ -159,22 +166,23 @@ pub fn log_text(db: &Db, week: bool, lang: Lang, now: f64) -> Result<String> {
     } else {
         day.format("%d/%m/%Y").to_string()
     };
-    let mut lines = vec![
-        head,
-        format!(
-            "  {}: {}   {}: {}   {}: {}   {}: {}/{}",
-            tr(lang, "log.stand"),
-            stats::fmt_duration(s.stand_s),
-            tr(lang, "log.sit"),
-            stats::fmt_duration(s.sit_s),
-            tr(lang, "log.switches"),
-            s.switches,
-            tr(lang, "log.water"),
-            s.water_done,
-            s.water_total
-        ),
-        String::new(),
-    ];
+    let categories = db.categories()?;
+    let name = |id: i64| {
+        categories.iter().find(|c| c.id == id).map(|c| category_name(lang, c)).unwrap_or_default()
+    };
+    let mut totals: Vec<String> = s
+        .categories
+        .iter()
+        .map(|c| {
+            if c.reminders_total > 0 && c.timers == 0 {
+                format!("{}: {}/{}", name(c.category_id), c.reminders_done, c.reminders_total)
+            } else {
+                format!("{}: {}", name(c.category_id), stats::fmt_duration(c.timer_s))
+            }
+        })
+        .collect();
+    totals.push(format!("{}: {}", tr(lang, "log.switches"), s.switches));
+    let mut lines = vec![head, format!("  {}", totals.join("   ")), String::new()];
     for x in &s.sessions {
         let span = if x.planned_s == 0 {
             hhmm(x.started_at)
@@ -218,6 +226,11 @@ mod tests {
         assert_eq!(parse_duration("abc"), None);
         assert_eq!(parse_duration("0"), None);
         assert_eq!(parse_duration("10x"), None);
+        assert_eq!(parse_duration("1:30"), Some(1.5));
+        assert_eq!(parse_duration("0:45"), Some(0.75));
+        assert_eq!(parse_duration("1:75"), None);
+        assert_eq!(parse_duration("1:3"), None);
+        assert_eq!(parse_duration("1:30:00"), None);
     }
 
     #[test]
@@ -238,7 +251,7 @@ mod tests {
         let mut e = Engine::new(Db::in_memory().unwrap());
         apply(&mut e, &parse(&args("30 Em pé")), 1000.0).unwrap();
         let s = e.active().unwrap().unwrap();
-        assert_eq!((s.category.as_str(), s.planned_s), ("stand", 1800));
+        assert_eq!((s.category_id, s.planned_s), (e.db.category_id("stand").unwrap(), 1800));
     }
 
     #[test]

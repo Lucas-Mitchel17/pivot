@@ -1,21 +1,22 @@
 // Favorites tab: saved timers (star = shows in the tray menu) and the create/edit form.
-import { api, CATEGORIES, type AppState, type Category, type Preset } from "../lib/api";
+import { api, type AppState, type Category, type Preset } from "../lib/api";
 import { h, icon } from "../lib/dom";
-import { cat, fmtMinutes, t, title } from "../lib/i18n";
+import { catName, fmtMinutes, minutesField, parseMinutesField, t, title } from "../lib/i18n";
 import { ICONS } from "../lib/icons";
-import { nowCard } from "./ui";
+import { categorySelect, minutesInput, nowCard } from "./ui";
 
 interface Draft {
   id: number | null;
   title: string;
   minutes: string;
-  category: Category;
+  categoryId: number;
   next: string; // preset id or ""
   favorite: boolean;
   error: string;
 }
 
-const blank = (): Draft => ({ id: null, title: "", minutes: "15", category: "stand", next: "", favorite: true, error: "" });
+let defaultCategory = 0;
+const blank = (): Draft => ({ id: null, title: "", minutes: "15", categoryId: defaultCategory, next: "", favorite: true, error: "" });
 let draft: Draft = blank();
 
 export function newTimer(rerender: () => void) {
@@ -24,16 +25,19 @@ export function newTimer(rerender: () => void) {
   document.querySelector<HTMLInputElement>("#fav-title")?.focus();
 }
 
-export function renderFavorites(state: AppState, presets: Preset[], rerender: () => void): HTMLElement {
+export function renderFavorites(state: AppState, presets: Preset[], categories: Category[], rerender: () => void): HTMLElement {
+  defaultCategory = categories[0]?.id ?? 0;
   if (draft.id !== null && !presets.some((p) => p.id === draft.id)) draft = blank();
+  if (!categories.some((c) => c.id === draft.categoryId)) draft.categoryId = defaultCategory;
+  const catById = new Map(categories.map((c) => [c.id, c]));
   const byId = new Map(presets.map((p) => [p.id, p]));
 
   const edit = (p: Preset) => {
     draft = {
       id: p.id,
       title: title(p.title),
-      minutes: String(p.minutes),
-      category: p.category,
+      minutes: minutesField(p.minutes),
+      categoryId: p.category_id,
       next: p.next_preset_id ? String(p.next_preset_id) : "",
       favorite: p.favorite,
       error: "",
@@ -44,7 +48,7 @@ export function renderFavorites(state: AppState, presets: Preset[], rerender: ()
 
   const rows = presets.map((p) => {
     const next = p.next_preset_id ? byId.get(p.next_preset_id) : undefined;
-    const sub = [cat(p.category), next ? t("fav.next", { next: `${title(next.title)} ${fmtMinutes(next.minutes)}` }) : null]
+    const sub = [catName(catById.get(p.category_id)), next ? t("fav.next", { next: `${title(next.title)} ${fmtMinutes(next.minutes)}` }) : null]
       .filter(Boolean)
       .join(" · ");
     const label = title(p.title);
@@ -83,9 +87,9 @@ export function renderFavorites(state: AppState, presets: Preset[], rerender: ()
   });
 
   const save = async () => {
-    const minutes = Number(draft.minutes.replace(",", "."));
+    const minutes = parseMinutesField(draft.minutes);
     if (!draft.title.trim()) draft.error = t("err.title");
-    else if (!(minutes > 0)) draft.error = t("err.minutes");
+    else if (minutes === null) draft.error = t("err.minutesFormat");
     else draft.error = "";
     if (draft.error) return rerender();
     // Keep the stored Portuguese name of a default preset when only its English label was shown.
@@ -94,8 +98,8 @@ export function renderFavorites(state: AppState, presets: Preset[], rerender: ()
     await api.savePreset({
       id: draft.id,
       title: name,
-      minutes,
-      category: draft.category,
+      minutes: minutes!,
+      category_id: draft.categoryId,
       next_preset_id: draft.next ? Number(draft.next) : null,
       favorite: draft.favorite,
     });
@@ -128,22 +132,13 @@ export function renderFavorites(state: AppState, presets: Preset[], rerender: ()
       "label",
       { class: "field" },
       t("f.minutes"),
-      h("input", {
-        class: "input mono",
-        inputmode: "decimal",
-        value: draft.minutes,
-        oninput: (e: Event) => (draft.minutes = (e.target as HTMLInputElement).value),
-      }),
+      minutesInput("fav-minutes", draft.minutes, (v) => (draft.minutes = v)),
     ),
     h(
       "label",
       { class: "field" },
       t("f.type"),
-      h(
-        "select",
-        { class: "input", onchange: (e: Event) => (draft.category = (e.target as HTMLSelectElement).value as Category) },
-        CATEGORIES.map((c) => h("option", { value: c, selected: c === draft.category }, cat(c))),
-      ),
+      categorySelect(categories, draft.categoryId, (id) => (draft.categoryId = id)),
     ),
     h(
       "label",

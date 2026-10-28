@@ -1,7 +1,7 @@
 // Small pieces shared by the tabs.
-import { api, type AppState } from "../lib/api";
+import { api, type AppState, type Category } from "../lib/api";
 import { h, icon } from "../lib/dom";
-import { fmtLeft, fmtMinutes, t, title } from "../lib/i18n";
+import { catName, fmtLeft, fmtMinutes, sanitizeMinutesField, t, title } from "../lib/i18n";
 import { ICONS } from "../lib/icons";
 import { LOGO_LOCKUP } from "../lib/logo";
 
@@ -85,4 +85,40 @@ export function tickClocks() {
     const [start, end] = (el.dataset.progress ?? "0,1").split(",").map(Number);
     el.style.width = `${progressPct(start, end, now)}%`;
   });
+}
+
+/** Text field for "15" or "1:30": only digits and one ":" can be typed. */
+export function minutesInput(id: string, value: string, oninput: (v: string) => void) {
+  const allowed = new Set(["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Home", "End", "Tab", "Enter"]);
+  return h("input", {
+    id,
+    class: "input mono",
+    type: "text",
+    inputmode: "numeric",
+    autocomplete: "off",
+    placeholder: "15 / 1:30",
+    value,
+    onkeydown: (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || allowed.has(e.key)) return;
+      const el = e.target as HTMLInputElement;
+      if (/^\d$/.test(e.key)) return;
+      if (e.key === ":" && !el.value.includes(":")) return;
+      e.preventDefault();
+    },
+    oninput: (e: Event) => {
+      const el = e.target as HTMLInputElement;
+      const clean = sanitizeMinutesField(el.value);
+      if (clean !== el.value) el.value = clean;
+      oninput(clean);
+    },
+  });
+}
+
+/** <select> of types. */
+export function categorySelect(categories: Category[], value: number, onchange: (id: number) => void) {
+  return h(
+    "select",
+    { class: "input", onchange: (e: Event) => onchange(Number((e.target as HTMLSelectElement).value)) },
+    categories.map((c) => h("option", { value: String(c.id), selected: c.id === value }, catName(c))),
+  );
 }

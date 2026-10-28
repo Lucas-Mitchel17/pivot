@@ -87,17 +87,30 @@ pub fn display_title(lang: Lang, title: &str) -> String {
     .to_string()
 }
 
-/// 25 -> "25m", 90 -> "1h30", 0.5 -> "30s".
+/// Name to show for a category: built-ins are translated, user ones as typed.
+pub fn category_name(lang: Lang, c: &crate::db::Category) -> String {
+    let Some(key) = c.key.as_deref() else { return c.name.clone() };
+    let (pt, en) = match key {
+        "stand" => ("Em pé", "Standing"),
+        "sit" => ("Sentado", "Sitting"),
+        "break" => ("Pausa", "Break"),
+        "focus" => ("Foco", "Focus"),
+        "water" => ("Água", "Water"),
+        _ => ("Outro", "Other"),
+    };
+    (if lang == Lang::En { en } else { pt }).to_string()
+}
+
+/// 25 -> "25m", 90 -> "1h30", 1.5 -> "1:30", 0.5 -> "0:30".
 pub fn fmt_minutes(minutes: f64) -> String {
     let total = (minutes * 60.0).round() as i64;
-    if total < 60 {
-        return format!("{total}s");
-    }
-    let (h, m) = (total / 3600, (total % 3600) / 60);
-    match (h, m) {
-        (0, m) => format!("{m}m"),
-        (h, 0) => format!("{h}h"),
-        (h, m) => format!("{h}h{m:02}"),
+    let (h, m, s) = (total / 3600, (total % 3600) / 60, total % 60);
+    match (h, m, s) {
+        (0, m, 0) => format!("{m}m"),
+        (h, 0, 0) => format!("{h}h"),
+        (h, m, 0) => format!("{h}h{m:02}"),
+        (0, m, s) => format!("{m}:{s:02}"),
+        (h, m, s) => format!("{h}:{m:02}:{s:02}"),
     }
 }
 
@@ -106,4 +119,19 @@ pub fn fmt_left(seconds: f64) -> String {
     let s = seconds.max(0.0).ceil() as i64;
     let (h, m, sec) = (s / 3600, (s % 3600) / 60, s % 60);
     if h > 0 { format!("{h}:{m:02}:{sec:02}") } else { format!("{m:02}:{sec:02}") }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn formats_minutes_keeping_seconds() {
+        assert_eq!(fmt_minutes(25.0), "25m");
+        assert_eq!(fmt_minutes(90.0), "1h30");
+        assert_eq!(fmt_minutes(60.0), "1h");
+        assert_eq!(fmt_minutes(1.5), "1:30");
+        assert_eq!(fmt_minutes(0.5), "0:30");
+        assert_eq!(fmt_minutes(60.5), "1:00:30");
+    }
 }

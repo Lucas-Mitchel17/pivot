@@ -18,12 +18,12 @@ src-tauri/            Tauri app
   src/lib.rs          plugins, 1-second clock, main window hides instead of closing
   src/tray.rs         tray / top bar icon: countdown and favorites menu
   src/alerts.rs       always-on-top alert window + system notification
-  src/sound.rs        alarm through the platform's own player and sound
+  src/sound.rs        alert sound through rodio: built-in synthesized chime or a custom file (≤ 5 s), with volume
   src/commands.rs     commands the windows call
   src/main.rs         terminal: status/log/list read the database directly
 src/                  frontend (TypeScript + Vite, no framework)
   lib/                api.ts, i18n.ts (en / pt-BR), theme.ts, logo.ts, icons.ts, dom.ts
-  main/               main window: favorites.ts, automatic.ts, history.ts, ui.ts
+  main/               main window: favorites.ts, automatic.ts, history.ts, settings.ts, ui.ts
   alert/alert.ts      alert window
   styles.css          app styles on top of the design system's semantic tokens
 assets/               source SVGs for the app and tray icons
@@ -48,7 +48,16 @@ assets/               source SVGs for the app and tray icons
   - A slot missed by more than 15 minutes (laptop asleep) is not fired late.
   - An unanswered reminder becomes "skipped" when the next slot fires.
   - There is a global switch and a one-hour pause.
-- **Storage:** SQLite at `dirs::data_dir()/pivot/pivot.db` (`PIVOT_DB` overrides it), with tables `presets`, `recurring`, `sessions` and `settings`.
+- **Storage:** SQLite at `dirs::data_dir()/pivot/pivot.db` (`PIVOT_DB` overrides it), with tables `categories`, `presets`, `recurring`, `sessions` and `settings`.
+  - The schema is versioned with `PRAGMA user_version` (currently 1). Future schema changes become new steps in `Db::migrate`.
+- **Types (categories):** six built-ins (Standing, Sitting, Break, Focus, Water, Other), plus the user's own, each with a name and a color.
+  - History tracks every type on its own: timers add up time, reminders count done/total.
+  - "Switches" counts every change from one timer type to another.
+  - Deleting a user type moves its timers, reminders and history to "Other".
+- **Sound:** the alert plays through rodio at the volume set in Settings (0–100).
+  - The default is a chime synthesized at runtime, so no audio file is shipped.
+  - A custom file must decode (wav, mp3, ogg, flac, m4a, aac) and last at most 5 s. It is copied to the data dir.
+- **Durations:** fields and the terminal accept `15` (minutes) or `1:30` (minutes:seconds), and are shown as `15m` or `1:30`.
 - **Theme:** System / Light / Dark through `data-mode` on `<html>`; dark is the design system's default.
 - **Language:** English and pt-BR.
   - The windows use `src/lib/i18n.ts`; the tray, notifications and terminal use `core/src/i18n.rs`.

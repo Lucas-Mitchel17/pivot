@@ -1,7 +1,10 @@
-//! SQLite storage: presets, recurring reminders, sessions and settings.
+//! SQLite storage: categories, presets, recurring reminders, sessions and settings.
 //!
 //! Times are epoch seconds (f64). Weekdays follow chrono's Monday = 0 …
 //! Sunday = 6, stored as a string of digits ("01234" = Mon–Fri).
+//!
+//! The schema is versioned with `PRAGMA user_version`; future changes go in
+//! `migrate` as new steps, so existing databases upgrade in place.
 
 use chrono::{Datelike, Local, NaiveDate, NaiveTime, TimeZone};
 use rusqlite::{params, Connection, OptionalExtension, Row};
@@ -14,24 +17,43 @@ fn err(e: rusqlite::Error) -> String {
     e.to_string()
 }
 
-pub const CATEGORIES: [&str; 6] = ["stand", "sit", "break", "focus", "water", "other"];
+pub const SCHEMA_VERSION: i64 = 1;
+
+/// Built-in categories: (key, stored name). Names are Portuguese and get
+/// translated for display; user categories keep the name they were given.
+pub const BUILTIN_CATEGORIES: [(&str, &str); 6] = [
+    ("stand", "Em pé"),
+    ("sit", "Sentado"),
+    ("break", "Pausa"),
+    ("focus", "Foco"),
+    ("water", "Água"),
+    ("other", "Outro"),
+];
 
 const SCHEMA: &str = "
-CREATE TABLE IF NOT EXISTS presets (
+CREATE TABLE categories (
+    id         INTEGER PRIMARY KEY,
+    key        TEXT UNIQUE,
+    name       TEXT NOT NULL,
+    color      TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at REAL NOT NULL
+);
+CREATE TABLE presets (
     id             INTEGER PRIMARY KEY,
     slug           TEXT NOT NULL UNIQUE,
     title          TEXT NOT NULL,
     minutes        REAL NOT NULL,
-    category       TEXT NOT NULL DEFAULT 'other',
+    category_id    INTEGER NOT NULL REFERENCES categories(id),
     next_preset_id INTEGER REFERENCES presets(id) ON DELETE SET NULL,
     favorite       INTEGER NOT NULL DEFAULT 1,
     sort_order     INTEGER NOT NULL DEFAULT 0,
     created_at     REAL NOT NULL
 );
-CREATE TABLE IF NOT EXISTS recurring (
+CREATE TABLE recurring (
     id            INTEGER PRIMARY KEY,
     title         TEXT NOT NULL,
-    category      TEXT NOT NULL DEFAULT 'water',
+    category_id   INTEGER NOT NULL REFERENCES categories(id),
     every_min     INTEGER NOT NULL,
     start_time    TEXT NOT NULL,
     end_time      TEXT NOT NULL,
@@ -39,12 +61,12 @@ CREATE TABLE IF NOT EXISTS recurring (
     enabled       INTEGER NOT NULL DEFAULT 1,
     last_fired_at REAL
 );
-CREATE TABLE IF NOT EXISTS sessions (
+CREATE TABLE sessions (
     id           INTEGER PRIMARY KEY,
     preset_id    INTEGER REFERENCES presets(id) ON DELETE SET NULL,
     recurring_id INTEGER REFERENCES recurring(id) ON DELETE SET NULL,
     title        TEXT NOT NULL,
-    category     TEXT NOT NULL,
+    category_id  INTEGER NOT NULL REFERENCES categories(id),
     source       TEXT NOT NULL,
     started_at   REAL NOT NULL,
     planned_s    INTEGER NOT NULL,
@@ -53,29 +75,37 @@ CREATE TABLE IF NOT EXISTS sessions (
     outcome      TEXT,
     snoozes      INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX IF NOT EXISTS sessions_started ON sessions(started_at);
-CREATE TABLE IF NOT EXISTS settings (
+CREATE INDEX sessions_started ON sessions(started_at);
+CREATE TABLE settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
 ";
 
-const DEFAULT_SETTINGS: [(&str, &str); 4] = [
+const DEFAULT_SETTINGS: [(&str, &str); 6] = [
     ("auto_enabled", "1"),
     ("auto_paused_until", "0"),
     ("theme", "system"), // system | light | dark
     ("lang", "pt"),      // pt | en
+    ("sound_volume", "60"),
+    ("sound_file", ""), // file name inside the data dir, "" = built-in chime
 ];
 
-/// `PIVOT_DB` overrides the location (handy for testing without touching real data).
 pub fn default_path() -> PathBuf {
     if let Some(path) = std::env::var_os("PIVOT_DB") {
         return PathBuf::from(path);
     }
-    dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("pivot")
-        .join("pivot.db")
+    data_dir().join("pivot.db")
+}
+
+/// Where the database and the custom alert sound live.
+pub fn data_dir() -> PathBuf {
+    if let Some(path) = std::env::var_os("PIVOT_DB") {
+        if let Some(parent) = PathBuf::from(path).parent() {
+            return parent.to_path_buf();
+        }
+    }
+    dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join("pivot")
 }
 
 pub fn slugify(text: &str) -> String {
@@ -108,13 +138,28 @@ pub fn parse_hhmm(value: &str) -> Option<NaiveTime> {
     NaiveTime::from_hms_opt(h.parse().ok()?, m.parse().ok()?, 0)
 }
 
+fn valid_color(c: &str) -> bool {
+    c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|ch| ch.is_ascii_hexdigit())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Category {
+    pub id: i64,
+    /// Set for built-in categories ("stand", "sit"…), `None` for user ones.
+    pub key: Option<String>,
+    pub name: String,
+    /// "#rrggbb"; built-ins use `None` and take their color from the theme.
+    pub color: Option<String>,
+    pub sort_order: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Preset {
     pub id: i64,
     pub slug: String,
     pub title: String,
     pub minutes: f64,
-    pub category: String,
+    pub category_id: i64,
     pub next_preset_id: Option<i64>,
     pub favorite: bool,
     pub sort_order: i64,
@@ -124,7 +169,7 @@ pub struct Preset {
 pub struct Recurring {
     pub id: i64,
     pub title: String,
-    pub category: String,
+    pub category_id: i64,
     pub every_min: i64,
     pub start_time: String,
     pub end_time: String,
@@ -172,7 +217,7 @@ pub struct Session {
     pub preset_id: Option<i64>,
     pub recurring_id: Option<i64>,
     pub title: String,
-    pub category: String,
+    pub category_id: i64,
     pub source: String,
     pub started_at: f64,
     pub planned_s: i64,
@@ -199,11 +244,18 @@ pub struct Db {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct CategoryInput {
+    pub id: Option<i64>,
+    pub name: String,
+    pub color: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct PresetInput {
     pub id: Option<i64>,
     pub title: String,
     pub minutes: f64,
-    pub category: String,
+    pub category_id: i64,
     pub next_preset_id: Option<i64>,
     pub favorite: bool,
 }
@@ -212,7 +264,7 @@ pub struct PresetInput {
 pub struct RecurringInput {
     pub id: Option<i64>,
     pub title: String,
-    pub category: String,
+    pub category_id: i64,
     pub every_min: i64,
     pub start_time: String,
     pub end_time: String,
@@ -234,10 +286,33 @@ impl Db {
 
     fn init(conn: Connection) -> Result<Self> {
         conn.execute_batch("PRAGMA foreign_keys = ON;").map_err(err)?;
-        conn.execute_batch(SCHEMA).map_err(err)?;
         let db = Db { conn };
+        db.migrate()?;
         db.seed()?;
         Ok(db)
+    }
+
+    fn version(&self) -> Result<i64> {
+        self.conn.query_row("PRAGMA user_version", [], |r| r.get(0)).map_err(err)
+    }
+
+    fn migrate(&self) -> Result<()> {
+        if self.version()? < 1 {
+            let mut sql = String::from("BEGIN;");
+            sql.push_str(SCHEMA);
+            for (i, (key, name)) in BUILTIN_CATEGORIES.iter().enumerate() {
+                sql.push_str(&format!(
+                    "INSERT INTO categories(key, name, sort_order, created_at) VALUES ('{key}', '{name}', {}, 0);",
+                    i + 1
+                ));
+            }
+            sql.push_str("PRAGMA user_version = 1; COMMIT;");
+            self.conn.execute_batch(&sql).map_err(|e| {
+                let _ = self.conn.execute_batch("ROLLBACK");
+                err(e)
+            })?;
+        }
+        Ok(())
     }
 
     fn seed(&self) -> Result<()> {
@@ -248,10 +323,11 @@ impl Db {
         }
         let presets: i64 = self.conn.query_row("SELECT COUNT(*) FROM presets", [], |r| r.get(0)).map_err(err)?;
         if presets == 0 {
-            let stand = self.add_preset("Em pé", 15.0, "stand", None, true)?;
-            let sit = self.add_preset("Sentado", 45.0, "sit", Some(stand), true)?;
-            let rest = self.add_preset("Descanso", 10.0, "break", None, true)?;
-            self.add_preset("Foco", 25.0, "focus", Some(rest), true)?;
+            let cat = |k: &str| self.category_id(k);
+            let stand = self.add_preset("Em pé", 15.0, cat("stand")?, None, true)?;
+            let sit = self.add_preset("Sentado", 45.0, cat("sit")?, Some(stand), true)?;
+            let rest = self.add_preset("Descanso", 10.0, cat("break")?, None, true)?;
+            self.add_preset("Foco", 25.0, cat("focus")?, Some(rest), true)?;
             self.set_next(stand, Some(sit))?;
         }
         let recurring: i64 =
@@ -260,7 +336,7 @@ impl Db {
             self.save_recurring(&RecurringInput {
                 id: None,
                 title: "Beber água".into(),
-                category: "water".into(),
+                category_id: self.category_id("water")?,
                 every_min: 60,
                 start_time: "09:00".into(),
                 end_time: "18:00".into(),
@@ -294,6 +370,91 @@ impl Db {
             .map_err(err)
     }
 
+    // ---------- categories ----------
+
+    pub fn categories(&self) -> Result<Vec<Category>> {
+        let mut stmt = self.conn.prepare("SELECT * FROM categories ORDER BY sort_order, id").map_err(err)?;
+        let rows = stmt.query_map([], category_row).map_err(err)?;
+        rows.collect::<std::result::Result<_, _>>().map_err(err)
+    }
+
+    pub fn category(&self, id: i64) -> Result<Option<Category>> {
+        self.conn
+            .query_row("SELECT * FROM categories WHERE id = ?1", [id], category_row)
+            .optional()
+            .map_err(err)
+    }
+
+    /// Id of a built-in category by key ("stand", "other"…).
+    pub fn category_id(&self, key: &str) -> Result<i64> {
+        self.conn
+            .query_row("SELECT id FROM categories WHERE key = ?1", [key], |r| r.get(0))
+            .map_err(err)
+    }
+
+    /// Creates or updates a user category. Built-ins can't be changed.
+    pub fn save_category(&self, c: &CategoryInput) -> Result<i64> {
+        let name = c.name.trim();
+        if name.is_empty() || !valid_color(&c.color) {
+            return Err("invalid category".into());
+        }
+        let taken: Option<i64> = self
+            .conn
+            .query_row("SELECT id FROM categories WHERE lower(name) = lower(?1)", [name], |r| r.get(0))
+            .optional()
+            .map_err(err)?;
+        if taken.is_some_and(|id| Some(id) != c.id) {
+            return Err("duplicate category".into());
+        }
+        match c.id {
+            None => {
+                let order: i64 = self
+                    .conn
+                    .query_row("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM categories", [], |r| r.get(0))
+                    .map_err(err)?;
+                self.conn
+                    .execute(
+                        "INSERT INTO categories(name, color, sort_order, created_at) VALUES (?1, ?2, ?3, ?4)",
+                        params![name, c.color, order, now()],
+                    )
+                    .map_err(err)?;
+                Ok(self.conn.last_insert_rowid())
+            }
+            Some(id) => {
+                let changed = self
+                    .conn
+                    .execute(
+                        "UPDATE categories SET name = ?1, color = ?2 WHERE id = ?3 AND key IS NULL",
+                        params![name, c.color, id],
+                    )
+                    .map_err(err)?;
+                if changed == 0 {
+                    return Err("built-in categories can't be changed".into());
+                }
+                Ok(id)
+            }
+        }
+    }
+
+    /// Deletes a user category; timers, reminders and history using it move to "other".
+    pub fn delete_category(&self, id: i64) -> Result<()> {
+        let cat = self.category(id)?.ok_or("category not found")?;
+        if cat.key.is_some() {
+            return Err("built-in categories can't be deleted".into());
+        }
+        let other = self.category_id("other")?;
+        for table in ["presets", "recurring", "sessions"] {
+            self.conn
+                .execute(&format!("UPDATE {table} SET category_id = ?1 WHERE category_id = ?2"), params![other, id])
+                .map_err(err)?;
+        }
+        self.conn.execute("DELETE FROM categories WHERE id = ?1", [id]).map(|_| ()).map_err(err)
+    }
+
+    fn check_category(&self, id: i64) -> Result<()> {
+        self.category(id)?.map(|_| ()).ok_or_else(|| "unknown category".into())
+    }
+
     // ---------- presets ----------
 
     fn unique_slug(&self, title: &str, exclude: Option<i64>) -> Result<String> {
@@ -317,16 +478,16 @@ impl Db {
         }
     }
 
-    pub fn add_preset(&self, title: &str, minutes: f64, category: &str, next: Option<i64>, favorite: bool) -> Result<i64> {
+    pub fn add_preset(&self, title: &str, minutes: f64, category_id: i64, next: Option<i64>, favorite: bool) -> Result<i64> {
         let order: i64 = self
             .conn
             .query_row("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM presets", [], |r| r.get(0))
             .map_err(err)?;
         self.conn
             .execute(
-                "INSERT INTO presets(slug, title, minutes, category, next_preset_id, favorite, sort_order, created_at) \
+                "INSERT INTO presets(slug, title, minutes, category_id, next_preset_id, favorite, sort_order, created_at) \
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                params![self.unique_slug(title, None)?, title, minutes, category, next, favorite, order, now()],
+                params![self.unique_slug(title, None)?, title, minutes, category_id, next, favorite, order, now()],
             )
             .map_err(err)?;
         Ok(self.conn.last_insert_rowid())
@@ -341,18 +502,19 @@ impl Db {
 
     pub fn save_preset(&self, p: &PresetInput) -> Result<i64> {
         let title = p.title.trim();
-        if title.is_empty() || p.minutes <= 0.0 || !CATEGORIES.contains(&p.category.as_str()) {
+        if title.is_empty() || p.minutes <= 0.0 {
             return Err("invalid preset".into());
         }
+        self.check_category(p.category_id)?;
         match p.id {
-            None => self.add_preset(title, p.minutes, &p.category, p.next_preset_id, p.favorite),
+            None => self.add_preset(title, p.minutes, p.category_id, p.next_preset_id, p.favorite),
             Some(id) => {
                 let next = p.next_preset_id.filter(|&n| n != id);
                 self.conn
                     .execute(
-                        "UPDATE presets SET slug = ?1, title = ?2, minutes = ?3, category = ?4, \
+                        "UPDATE presets SET slug = ?1, title = ?2, minutes = ?3, category_id = ?4, \
                          next_preset_id = ?5, favorite = ?6 WHERE id = ?7",
-                        params![self.unique_slug(title, Some(id))?, title, p.minutes, p.category, next, p.favorite, id],
+                        params![self.unique_slug(title, Some(id))?, title, p.minutes, p.category_id, next, p.favorite, id],
                     )
                     .map_err(err)?;
                 Ok(id)
@@ -411,14 +573,15 @@ impl Db {
         if title.is_empty() || r.every_min <= 0 || end <= start || r.weekdays.is_empty() {
             return Err("invalid reminder".into());
         }
+        self.check_category(r.category_id)?;
         let (st, et) = (start.format("%H:%M").to_string(), end.format("%H:%M").to_string());
         match r.id {
             None => {
                 self.conn
                     .execute(
-                        "INSERT INTO recurring(title, category, every_min, start_time, end_time, weekdays, enabled) \
+                        "INSERT INTO recurring(title, category_id, every_min, start_time, end_time, weekdays, enabled) \
                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                        params![title, r.category, r.every_min, st, et, r.weekdays, r.enabled],
+                        params![title, r.category_id, r.every_min, st, et, r.weekdays, r.enabled],
                     )
                     .map_err(err)?;
                 Ok(self.conn.last_insert_rowid())
@@ -426,9 +589,9 @@ impl Db {
             Some(id) => {
                 self.conn
                     .execute(
-                        "UPDATE recurring SET title = ?1, category = ?2, every_min = ?3, start_time = ?4, \
+                        "UPDATE recurring SET title = ?1, category_id = ?2, every_min = ?3, start_time = ?4, \
                          end_time = ?5, weekdays = ?6, enabled = ?7 WHERE id = ?8",
-                        params![title, r.category, r.every_min, st, et, r.weekdays, r.enabled, id],
+                        params![title, r.category_id, r.every_min, st, et, r.weekdays, r.enabled, id],
                     )
                     .map_err(err)?;
                 Ok(id)
@@ -473,7 +636,7 @@ impl Db {
     pub fn start_session(
         &self,
         title: &str,
-        category: &str,
+        category_id: i64,
         source: &str,
         planned_s: i64,
         preset_id: Option<i64>,
@@ -482,9 +645,9 @@ impl Db {
     ) -> Result<i64> {
         self.conn
             .execute(
-                "INSERT INTO sessions(preset_id, recurring_id, title, category, source, started_at, planned_s, ends_at) \
+                "INSERT INTO sessions(preset_id, recurring_id, title, category_id, source, started_at, planned_s, ends_at) \
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                params![preset_id, recurring_id, title, category, source, now, planned_s, now + planned_s as f64],
+                params![preset_id, recurring_id, title, category_id, source, now, planned_s, now + planned_s as f64],
             )
             .map_err(err)?;
         Ok(self.conn.last_insert_rowid())
@@ -556,13 +719,23 @@ pub fn now() -> f64 {
         .unwrap_or(0.0)
 }
 
+fn category_row(r: &Row) -> rusqlite::Result<Category> {
+    Ok(Category {
+        id: r.get("id")?,
+        key: r.get("key")?,
+        name: r.get("name")?,
+        color: r.get("color")?,
+        sort_order: r.get("sort_order")?,
+    })
+}
+
 fn preset_row(r: &Row) -> rusqlite::Result<Preset> {
     Ok(Preset {
         id: r.get("id")?,
         slug: r.get("slug")?,
         title: r.get("title")?,
         minutes: r.get("minutes")?,
-        category: r.get("category")?,
+        category_id: r.get("category_id")?,
         next_preset_id: r.get("next_preset_id")?,
         favorite: r.get("favorite")?,
         sort_order: r.get("sort_order")?,
@@ -573,7 +746,7 @@ fn recurring_row(r: &Row) -> rusqlite::Result<Recurring> {
     Ok(Recurring {
         id: r.get("id")?,
         title: r.get("title")?,
-        category: r.get("category")?,
+        category_id: r.get("category_id")?,
         every_min: r.get("every_min")?,
         start_time: r.get("start_time")?,
         end_time: r.get("end_time")?,
@@ -589,7 +762,7 @@ fn session_row(r: &Row) -> rusqlite::Result<Session> {
         preset_id: r.get("preset_id")?,
         recurring_id: r.get("recurring_id")?,
         title: r.get("title")?,
-        category: r.get("category")?,
+        category_id: r.get("category_id")?,
         source: r.get("source")?,
         started_at: r.get("started_at")?,
         planned_s: r.get("planned_s")?,
@@ -605,17 +778,57 @@ mod tests {
     use super::*;
 
     #[test]
-    fn seeds_presets_and_water_reminder() {
+    fn seeds_presets_categories_and_water_reminder() {
         let db = Db::in_memory().unwrap();
+        assert_eq!(db.version().unwrap(), SCHEMA_VERSION);
         let presets = db.presets(false).unwrap();
         assert_eq!(presets.iter().map(|p| p.slug.as_str()).collect::<Vec<_>>(), ["em-pe", "sentado", "descanso", "foco"]);
-        let stand = &presets[0];
-        let sit = &presets[1];
+        let (stand, sit) = (&presets[0], &presets[1]);
         assert_eq!(stand.next_preset_id, Some(sit.id));
         assert_eq!(sit.next_preset_id, Some(stand.id));
+        assert_eq!(stand.category_id, db.category_id("stand").unwrap());
         let rec = db.recurring().unwrap();
         assert_eq!(rec.len(), 1);
-        assert_eq!(rec[0].title, "Beber água");
+        assert_eq!(rec[0].category_id, db.category_id("water").unwrap());
+        assert_eq!(db.categories().unwrap().len(), BUILTIN_CATEGORIES.len());
+    }
+
+    #[test]
+    fn opening_twice_keeps_data_and_does_not_reseed() {
+        let dir = std::env::temp_dir().join(format!("pivot-test-{}", std::process::id()));
+        let path = dir.join("pivot.db");
+        let _ = std::fs::remove_dir_all(&dir);
+        let db = Db::open(&path).unwrap();
+        db.save_category(&CategoryInput { id: None, name: "Mine".into(), color: "#57e389".into() }).unwrap();
+        drop(db);
+        let db = Db::open(&path).unwrap();
+        assert_eq!(db.version().unwrap(), SCHEMA_VERSION);
+        assert_eq!(db.categories().unwrap().len(), BUILTIN_CATEGORIES.len() + 1);
+        assert_eq!(db.presets(false).unwrap().len(), 4);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn user_categories_can_be_created_edited_and_deleted() {
+        let db = Db::in_memory().unwrap();
+        let id = db.save_category(&CategoryInput { id: None, name: "Pausa com atividade".into(), color: "#f5c451".into() }).unwrap();
+        let p = db.add_preset("Alongar", 5.0, id, None, true).unwrap();
+        db.save_category(&CategoryInput { id: Some(id), name: "Alongamento".into(), color: "#57e389".into() }).unwrap();
+        assert_eq!(db.category(id).unwrap().unwrap().name, "Alongamento");
+        db.delete_category(id).unwrap();
+        assert_eq!(db.preset(p).unwrap().unwrap().category_id, db.category_id("other").unwrap());
+    }
+
+    #[test]
+    fn rejects_bad_or_builtin_category_changes() {
+        let db = Db::in_memory().unwrap();
+        let stand = db.category_id("stand").unwrap();
+        assert!(db.save_category(&CategoryInput { id: Some(stand), name: "X".into(), color: "#000000".into() }).is_err());
+        assert!(db.delete_category(stand).is_err());
+        assert!(db.save_category(&CategoryInput { id: None, name: "Y".into(), color: "red".into() }).is_err());
+        assert!(db.save_category(&CategoryInput { id: None, name: "em pé".into(), color: "#000000".into() }).is_err());
+        let bad = PresetInput { id: None, title: "Z".into(), minutes: 1.0, category_id: 9999, next_preset_id: None, favorite: true };
+        assert!(db.save_preset(&bad).is_err());
     }
 
     #[test]
@@ -623,7 +836,7 @@ mod tests {
         assert_eq!(slugify("Em pé!"), "em-pe");
         assert_eq!(slugify("  Água & Café "), "agua-cafe");
         let db = Db::in_memory().unwrap();
-        let id = db.add_preset("Em pé", 5.0, "stand", None, false).unwrap();
+        let id = db.add_preset("Em pé", 5.0, db.category_id("stand").unwrap(), None, false).unwrap();
         assert_eq!(db.preset(id).unwrap().unwrap().slug, "em-pe-2");
     }
 
@@ -641,7 +854,7 @@ mod tests {
         let rec = Recurring {
             id: 1,
             title: "Água".into(),
-            category: "water".into(),
+            category_id: 5,
             every_min: 60,
             start_time: "09:00".into(),
             end_time: "18:00".into(),
@@ -664,7 +877,7 @@ mod tests {
         let mut r = RecurringInput {
             id: None,
             title: "x".into(),
-            category: "water".into(),
+            category_id: db.category_id("water").unwrap(),
             every_min: 30,
             start_time: "18:00".into(),
             end_time: "09:00".into(),

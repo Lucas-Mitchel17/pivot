@@ -4,7 +4,7 @@ import "../styles.css";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, type Answer } from "../lib/api";
 import { h, icon, replace } from "../lib/dom";
-import { fmtMinutes, t, title } from "../lib/i18n";
+import { catName, fmtMinutes, t, title } from "../lib/i18n";
 import { ICONS } from "../lib/icons";
 import { applySettings } from "../lib/theme";
 
@@ -14,7 +14,7 @@ const id = Number(getCurrentWindow().label.replace("alert-", ""));
 async function render() {
   const state = await api.state();
   applySettings(state.theme, state.lang);
-  const info = await api.alertInfo(id);
+  const [info, categories] = await Promise.all([api.alertInfo(id), api.categories()]);
   const s = info.session;
   if (s.ended_at !== null) return getCurrentWindow().close();
 
@@ -41,11 +41,14 @@ async function render() {
     const min = fmtMinutes(s.planned_s / 60);
     kicker = t("alert.kicker", { min });
     const next = info.next;
-    const nextCat = next?.category;
+    const nextCat = next ? categories.find((c) => c.id === next.category_id) : undefined;
+    const key = nextCat?.key;
     heading =
-      nextCat && ["stand", "sit", "break", "focus"].includes(nextCat)
-        ? t(`alert.title.${nextCat}` as "alert.title.sit")
-        : t("alert.title.done", { title: name });
+      key && ["stand", "sit", "break", "focus"].includes(key)
+        ? t(`alert.title.${key}` as "alert.title.sit")
+        : nextCat && !nextCat.key
+          ? t("alert.title.custom", { type: catName(nextCat) })
+          : t("alert.title.done", { title: name });
     body = next
       ? t("alert.body.next", { title: name, min, next: `${title(next.title)} ${fmtMinutes(next.minutes)}` })
       : t("alert.body", { title: name, min });

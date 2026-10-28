@@ -5,7 +5,9 @@ A posture timer for switching between standing, sitting and taking breaks while 
 - Tray / top bar icon with a countdown and your favorite timers (`15m — Standing`, `10m — Break`…)
 - An always-on-top alert with sound when time is up; one click starts the next timer in the sequence
 - Recurring reminders (e.g. "Drink water" every hour, 9:00–18:00, Monday to Friday)
-- Day and week history: time standing and sitting, position switches, water
+- Day and week history: time per type, switches between types, reminders done
+- Your own types (e.g. "Active break"), each with its own color in the history
+- Alert volume with a test button, or your own sound (up to 5 seconds)
 - Light and dark themes, built on the Lucas Mitchel Dev design system
 - English and Brazilian Portuguese
 - Optional terminal commands: `pivot start em-pe`, `pivot status`, `pivot log`
@@ -56,7 +58,7 @@ ends, and that one suggests "Standing" again.
 ```
 pivot                     open the window
 pivot start em-pe         start a saved timer (by name or slug)
-pivot 30 "Standing"       one-off timer (30, 30m, 90s, 1h30)
+pivot 30 "Standing"       one-off timer (30, 1:30, 90s, 1h30)
 pivot stop                stop the timer
 pivot status              show the current timer
 pivot list                list saved timers
@@ -75,7 +77,7 @@ npm run tauri build      # installers for the current system
 Linux build dependencies (Ubuntu/Debian):
 
 ```
-sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev build-essential
+sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev libasound2-dev build-essential
 ```
 
 Set `PIVOT_DB=/some/test.db` to run against a throwaway database.

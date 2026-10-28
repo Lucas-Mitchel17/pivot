@@ -1,14 +1,14 @@
 // Automatic tab: recurring reminders (e.g. drink water every hour, 9–18, Mon–Fri).
 import { api, type AppState, type Category, type Recurring } from "../lib/api";
 import { h, icon } from "../lib/dom";
-import { fmtDays, fmtMinutes, hhmm, t, title, weekdayLetters } from "../lib/i18n";
+import { catColor, fmtDays, fmtMinutes, hhmm, t, title, weekdayLetters } from "../lib/i18n";
 import { ICONS } from "../lib/icons";
-import { switchButton } from "./ui";
+import { categorySelect, switchButton } from "./ui";
 
 interface Draft {
   id: number | null;
   title: string;
-  category: Category;
+  categoryId: number;
   every: string;
   start: string;
   end: string;
@@ -17,10 +17,11 @@ interface Draft {
   error: string;
 }
 
+let defaultCategory = 0;
 const blank = (): Draft => ({
   id: null,
   title: "",
-  category: "water",
+  categoryId: defaultCategory,
   every: "60",
   start: "09:00",
   end: "18:00",
@@ -56,15 +57,18 @@ function preview(d: Draft): string {
   return t("auto.preview", { n: slots.length, first: fmtHM(slots[0]), last: fmtHM(slots[slots.length - 1]) });
 }
 
-export function renderAutomatic(state: AppState, list: Recurring[], rerender: () => void): HTMLElement {
+export function renderAutomatic(state: AppState, list: Recurring[], categories: Category[], rerender: () => void): HTMLElement {
+  defaultCategory = (categories.find((c) => c.key === "water") ?? categories[0])?.id ?? 0;
   if (draft.id !== null && !list.some((r) => r.id === draft.id)) draft = blank();
+  if (!categories.some((c) => c.id === draft.categoryId)) draft.categoryId = defaultCategory;
+  const catById = new Map(categories.map((c) => [c.id, c]));
   const paused = state.auto_paused_until > state.now;
 
   const edit = (r: Recurring) => {
     draft = {
       id: r.id,
       title: title(r.title),
-      category: r.category,
+      categoryId: r.category_id,
       every: String(r.every_min),
       start: r.start_time,
       end: r.end_time,
@@ -115,7 +119,11 @@ export function renderAutomatic(state: AppState, list: Recurring[], rerender: ()
     return h(
       "li",
       { class: `row${draft.id === r.id ? " editing" : ""}` },
-      h("span", { class: "badge icon-badge" }, icon(r.category === "water" ? ICONS.water : ICONS.person)),
+      h(
+        "span",
+        { class: "badge icon-badge", style: `color:${catColor(catById.get(r.category_id))}` },
+        icon(catById.get(r.category_id)?.key === "water" ? ICONS.water : ICONS.person, "icon inherit"),
+      ),
       h(
         "button",
         { class: "row-main", type: "button", onclick: () => edit(r) },
@@ -143,7 +151,7 @@ export function renderAutomatic(state: AppState, list: Recurring[], rerender: ()
     await api.saveRecurring({
       id: draft.id,
       title: name,
-      category: draft.category,
+      category_id: draft.categoryId,
       every_min: Math.round(every),
       start_time: fmtHM(start!),
       end_time: fmtHM(end!),
@@ -194,13 +202,7 @@ export function renderAutomatic(state: AppState, list: Recurring[], rerender: ()
       "label",
       { class: "field" },
       t("f.type"),
-      h(
-        "select",
-        { class: "input", onchange: (e: Event) => (draft.category = (e.target as HTMLSelectElement).value as Category) },
-        (["water", "stand", "break", "other"] as Category[]).map((c) =>
-          h("option", { value: c, selected: c === draft.category }, t(`cat.${c}` as "cat.water")),
-        ),
-      ),
+      categorySelect(categories, draft.categoryId, (id) => (draft.categoryId = id)),
     ),
     h(
       "label",
