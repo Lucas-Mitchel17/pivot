@@ -10,6 +10,7 @@ import { newTimer, renderFavorites } from "./favorites";
 import { renderHistory } from "./history";
 import { newType, renderSettings } from "./settings";
 import { credit, tickClocks } from "./ui";
+import { initUpdates, onUpdateStatus, updateStatus } from "./updates";
 
 type Tab = "favorites" | "automatic" | "history" | "settings";
 let tab: Tab = "favorites";
@@ -66,6 +67,9 @@ async function render() {
             },
           },
           label,
+          id === "settings" && updateStatus().kind === "available"
+            ? h("span", { class: "tab-dot", "aria-label": t("set.updates") })
+            : null,
         ),
       ),
     ),
@@ -80,5 +84,7 @@ async function render() {
 
 document.addEventListener("pivot:rerender", render);
 onChanged(render);
+onUpdateStatus(render);
 setInterval(tickClocks, 1000);
 render();
+initUpdates();

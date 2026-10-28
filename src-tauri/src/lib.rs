@@ -89,6 +89,8 @@ pub fn run(cmd: Command) {
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--background"])))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(AppState { engine: Mutex::new(engine) })
         .invoke_handler(tauri::generate_handler![
             commands::get_state,
@@ -117,6 +119,9 @@ pub fn run(cmd: Command) {
             commands::test_sound,
             commands::set_custom_sound,
             commands::reset_sound,
+            commands::clear_history,
+            commands::install_kind,
+            commands::open_releases,
             commands::open_site,
         ])
         .on_window_event(|window, event| {

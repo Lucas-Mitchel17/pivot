@@ -3,7 +3,8 @@ import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { api, type AppState, type Category, type SoundInfo } from "../lib/api";
 import { h } from "../lib/dom";
 import { catColor, catName, t, type Lang } from "../lib/i18n";
-import { segmented } from "./ui";
+import { confirmDelete, confirmDialog, segmented } from "./ui";
+import { canSelfUpdate, checkForUpdates, currentVersion, installUpdate, updateStatus } from "./updates";
 
 /** Colors for user types: mid-light hues that read on both light and dark surfaces. */
 export const TYPE_COLORS = ["#f5c451", "#57e389", "#ff8a8a", "#c061cb", "#ffa348", "#5bc8af", "#dc8add", "#99c1f1"];
@@ -18,6 +19,7 @@ const blankType = (): TypeDraft => ({ id: null, name: "", color: TYPE_COLORS[0],
 let typeDraft: TypeDraft = blankType();
 
 let soundMessage: { ok: boolean; text: string } | null = null;
+let historyMessage = "";
 let autostart = false;
 isEnabled()
   .then((v) => (autostart = v))
@@ -278,6 +280,8 @@ function types(categories: Category[], rerender: () => void) {
               type: "button",
               title: t("set.types.deleteHint"),
               onclick: async () => {
+                const name = categories.find((c) => c.id === typeDraft.id)?.name ?? typeDraft.name;
+                if (!(await confirmDelete(name, t("set.types.deleteHint")))) return;
                 await api.deleteCategory(typeDraft.id!);
                 typeDraft = blankType();
                 rerender();
@@ -309,7 +313,92 @@ function types(categories: Category[], rerender: () => void) {
   ];
 }
 
+function history(rerender: () => void) {
+  const clear = async (olderThanDays: number | null) => {
+    const ok = await confirmDialog({
+      title: t(olderThanDays ? "set.history.confirmOld" : "set.history.confirmAll"),
+      body: t("set.history.confirmBody"),
+      confirm: t("set.history.confirmBtn"),
+    });
+    if (!ok) return;
+    const n = await api.clearHistory(olderThanDays);
+    historyMessage = t("set.history.done", { n });
+    rerender();
+  };
+  return h(
+    "section",
+    { class: "section" },
+    h("h2", {}, t("set.history")),
+    h(
+      "div",
+      { class: "card settings-card" },
+      h("p", { class: "hint", style: "margin:0" }, t("set.history.hint")),
+      h(
+        "div",
+        { style: "display:flex;gap:8px;flex-wrap:wrap" },
+        h("button", { class: "btn", type: "button", onclick: () => clear(30) }, t("set.history.old")),
+        h("button", { class: "btn danger", type: "button", onclick: () => clear(null) }, t("set.history.all")),
+      ),
+      historyMessage ? h("p", { class: "ok", role: "status", style: "margin:0" }, historyMessage) : null,
+    ),
+  );
+}
+
+function updates() {
+  const s = updateStatus();
+  let line: Node | string = "";
+  let action: HTMLElement | null = h(
+    "button",
+    { class: "btn", type: "button", disabled: s.kind === "checking", onclick: () => checkForUpdates() },
+    t(s.kind === "checking" ? "set.updates.checking" : "set.updates.check"),
+  );
+  if (s.kind === "latest") line = h("span", { class: "ok" }, t("set.updates.latest"));
+  if (s.kind === "error") line = h("span", { class: "error" }, t("set.updates.error"));
+  if (s.kind === "downloading") {
+    line = h("span", { class: "row-sub" }, t("set.updates.downloading", { pct: s.pct }));
+    action = null;
+  }
+  if (s.kind === "available") {
+    line = h(
+      "div",
+      { class: "row-main", style: "cursor:default" },
+      h("span", { class: "row-title" }, t("set.updates.available", { version: s.version })),
+      s.notes ? h("span", { class: "row-sub" }, s.notes) : null,
+      canSelfUpdate() ? null : h("span", { class: "row-sub" }, t("set.updates.packageHint")),
+    );
+    action = h(
+      "button",
+      { class: "btn primary", type: "button", onclick: () => installUpdate() },
+      t(canSelfUpdate() ? "set.updates.install" : "set.updates.download"),
+    );
+  }
+  return h(
+    "section",
+    { class: "section" },
+    h("h2", {}, t("set.updates")),
+    h(
+      "div",
+      { class: `card settings-card${s.kind === "available" ? " update-card" : ""}` },
+      h(
+        "div",
+        { class: "setting-row" },
+        h("span", { class: "row-title mono" }, t("set.updates.version", { version: currentVersion() })),
+        action,
+      ),
+      line,
+    ),
+  );
+}
+
 export async function renderSettings(state: AppState, categories: Category[], rerender: () => void): Promise<HTMLElement> {
   const info = await api.soundInfo();
-  return h("div", { class: "page" }, appearance(state), sound(info, rerender), ...types(categories, rerender));
+  return h(
+    "div",
+    { class: "page" },
+    updates(),
+    appearance(state),
+    sound(info, rerender),
+    ...types(categories, rerender),
+    history(rerender),
+  );
 }

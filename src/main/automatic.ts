@@ -3,7 +3,7 @@ import { api, type AppState, type Category, type Recurring } from "../lib/api";
 import { h, icon } from "../lib/dom";
 import { catColor, fmtDays, fmtMinutes, hhmm, t, title, weekdayLetters } from "../lib/i18n";
 import { ICONS } from "../lib/icons";
-import { categorySelect, switchButton } from "./ui";
+import { categorySelect, confirmDelete, switchButton } from "./ui";
 
 interface Draft {
   id: number | null;
@@ -263,6 +263,7 @@ export function renderAutomatic(state: AppState, list: Recurring[], categories: 
               class: "btn danger",
               type: "button",
               onclick: async () => {
+                if (!(await confirmDelete(draft.title.trim() || "—", t("confirm.reminder")))) return;
                 await api.deleteRecurring(draft.id!);
                 draft = blank();
                 rerender();

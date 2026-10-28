@@ -797,3 +797,53 @@ h2 {
   border-radius: 6px;
   padding: 1px var(--space-2);
 }
+
+/* ---------- confirm dialog ---------- */
+dialog.confirm {
+  width: min(26rem, calc(100vw - 2rem));
+  padding: var(--space-6);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-3);
+  color: var(--text-primary);
+  box-shadow: var(--elevation-3);
+}
+dialog.confirm::backdrop {
+  background: var(--scrim);
+}
+dialog.confirm h2 {
+  margin-bottom: var(--space-2);
+  overflow-wrap: anywhere;
+}
+dialog.confirm p {
+  margin: 0;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+}
+.btn.danger-fill {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: var(--ramp-neutral-950);
+}
+.btn.danger-fill:hover {
+  filter: brightness(1.08);
+}
+[data-mode="light"] .btn.danger-fill {
+  color: var(--ramp-neutral-0);
+}
+.tab-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--action-primary);
+  vertical-align: middle;
+}
+.update-card {
+  border-color: var(--border-strong);
+}

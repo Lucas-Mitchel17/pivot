@@ -22,7 +22,7 @@ npm run tauri dev               # run the app (see gotchas)
 npm test                        # pivot-core tests
 cargo test --workspace          # all Rust tests, including the sound module
 npx tsc --noEmit -p .           # type-check the frontend
-npx tauri build --bundles deb   # local .deb in target/release/bundle/deb/
+TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/pivot.key)" npx tauri build --bundles deb   # local .deb
 ```
 
 ## Gotchas
@@ -46,3 +46,5 @@ npx tauri build --bundles deb   # local .deb in target/release/bundle/deb/
 2. Commit, then `git tag -a vX.Y.Z -m "Pivot X.Y.Z" && git push origin vX.Y.Z`.
 3. `.github/workflows/release.yml` builds the unsigned installers for Linux, Windows and macOS and publishes the release.
    Only tag after Lucas has tested the local build.
+4. The workflow signs update bundles with the `TAURI_SIGNING_PRIVATE_KEY` secret. The private key is
+   `~/.tauri/pivot.key` on Lucas's machine; never print it or commit it.

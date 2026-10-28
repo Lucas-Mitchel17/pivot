@@ -3,7 +3,7 @@ import { api, type AppState, type Category, type Preset } from "../lib/api";
 import { h, icon } from "../lib/dom";
 import { catName, fmtMinutes, minutesField, parseMinutesField, t, title } from "../lib/i18n";
 import { ICONS } from "../lib/icons";
-import { categorySelect, minutesInput, nowCard } from "./ui";
+import { categorySelect, confirmDelete, minutesInput, nowCard } from "./ui";
 
 interface Draft {
   id: number | null;
@@ -180,6 +180,7 @@ export function renderFavorites(state: AppState, presets: Preset[], categories: 
               class: "btn danger",
               type: "button",
               onclick: async () => {
+                if (!(await confirmDelete(draft.title.trim() || "—", t("confirm.timer")))) return;
                 await api.deletePreset(draft.id!);
                 draft = blank();
                 rerender();

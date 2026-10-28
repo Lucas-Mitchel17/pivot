@@ -705,6 +705,17 @@ impl Db {
         )
     }
 
+    /// Deletes finished sessions; with `before`, only those that started earlier.
+    /// The running timer and unanswered reminders are kept. Returns how many were deleted.
+    pub fn clear_history(&self, before: Option<f64>) -> Result<usize> {
+        self.conn
+            .execute(
+                "DELETE FROM sessions WHERE ended_at IS NOT NULL AND started_at < ?1",
+                [before.unwrap_or(f64::MAX)],
+            )
+            .map_err(err)
+    }
+
     fn query_sessions<P: rusqlite::Params>(&self, sql: &str, p: P) -> Result<Vec<Session>> {
         let mut stmt = self.conn.prepare(sql).map_err(err)?;
         let rows = stmt.query_map(p, session_row).map_err(err)?;
@@ -829,6 +840,24 @@ mod tests {
         assert!(db.save_category(&CategoryInput { id: None, name: "em pé".into(), color: "#000000".into() }).is_err());
         let bad = PresetInput { id: None, title: "Z".into(), minutes: 1.0, category_id: 9999, next_preset_id: None, favorite: true };
         assert!(db.save_preset(&bad).is_err());
+    }
+
+    #[test]
+    fn clearing_history_keeps_open_sessions_and_respects_the_cutoff() {
+        let db = Db::in_memory().unwrap();
+        let other = db.category_id("other").unwrap();
+        let old = db.start_session("Old", other, "app", 60, None, None, 100.0).unwrap();
+        db.end_session(old, "done", 160.0).unwrap();
+        let recent = db.start_session("Recent", other, "app", 60, None, None, 1000.0).unwrap();
+        db.end_session(recent, "done", 1060.0).unwrap();
+        let running = db.start_session("Running", other, "app", 60, None, None, 2000.0).unwrap();
+
+        assert_eq!(db.clear_history(Some(500.0)).unwrap(), 1);
+        assert!(db.session(old).unwrap().is_none());
+        assert!(db.session(recent).unwrap().is_some());
+        assert_eq!(db.clear_history(None).unwrap(), 1);
+        assert!(db.session(recent).unwrap().is_none());
+        assert!(db.session(running).unwrap().is_some(), "the running timer survives");
     }
 
     #[test]

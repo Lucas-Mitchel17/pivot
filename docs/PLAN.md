@@ -57,6 +57,11 @@ assets/               source SVGs for the app and tray icons
 - **Sound:** the alert plays through rodio at the volume set in Settings (0–100).
   - The default is a chime synthesized at runtime, so no audio file is shipped.
   - A custom file must decode (wav, mp3, ogg, flac, m4a, aac) and last at most 5 s. It is copied to the data dir.
+- **Deleting** a timer, reminder or type asks for confirmation in a modal. **Settings → History** deletes finished history (all, or older than 30 days); open sessions, timers, reminders and types stay.
+- **Updates:** `tauri-plugin-updater` reads `latest.json` from the latest GitHub release, which `tauri-action` generates and signs.
+  - The check runs quietly at startup; Settings → Updates shows the status and a manual button.
+  - Windows, macOS and AppImage install in place and restart (`tauri-plugin-process`). `.deb`/`.rpm` open the release page, since the package manager owns those files.
+  - The update key is separate from OS code signing and free. Its private half lives in `~/.tauri/pivot.key` and in the `TAURI_SIGNING_PRIVATE_KEY` secret. Losing it means existing installs can't verify new updates.
 - **Durations:** fields and the terminal accept `15` (minutes) or `1:30` (minutes:seconds), and are shown as `15m` or `1:30`.
 - **Theme:** System / Light / Dark through `data-mode` on `<html>`; dark is the design system's default.
 - **Language:** English and pt-BR.

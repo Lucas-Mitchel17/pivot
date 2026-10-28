@@ -8,6 +8,7 @@ A posture timer for switching between standing, sitting and taking breaks while 
 - Day and week history: time per type, switches between types, reminders done
 - Your own types (e.g. "Active break"), each with its own color in the history
 - Alert volume with a test button, or your own sound (up to 5 seconds)
+- Updates from inside the app (Settings → Updates)
 - Light and dark themes, built on the Lucas Mitchel Dev design system
 - English and Brazilian Portuguese
 - Optional terminal commands: `pivot start em-pe`, `pivot status`, `pivot log`
@@ -43,6 +44,19 @@ What that means when you install:
   `xattr -dr com.apple.quarantine /Applications/Pivot.app`
 - **Linux:** nothing to do. On GNOME, the tray icon needs the AppIndicator extension
   (enabled by default on Ubuntu).
+
+### Updates
+
+Pivot checks GitHub for a new release when it starts; **Settings → Updates** shows it and has a
+"Check for updates" button.
+
+- **Windows, macOS and AppImage** update themselves: "Update and restart".
+- **.deb / .rpm** are managed by your package manager, so the button opens the download page;
+  install the new file the same way as the first one.
+
+Updates are signed with Pivot's own update key (free, unrelated to the paid OS code signing), so
+the app only installs builds that came from this repository's releases. In-app updates work
+from version 0.3.0 on; older versions need one manual download.
 
 ## Using it
 
@@ -82,8 +96,12 @@ sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
 
 Set `PIVOT_DB=/some/test.db` to run against a throwaway database.
 
-Releases: push a version tag (`git tag v0.1.1 && git push origin v0.1.1`) and the
-workflow builds every installer and publishes the release.
+Releases: push a version tag (`git tag v0.3.1 && git push origin v0.3.1`) and the
+workflow builds every installer, signs the update bundles and publishes the release with the
+`latest.json` the app checks. It needs the repository secret `TAURI_SIGNING_PRIVATE_KEY`
+(the private half of the key whose public half is `plugins.updater.pubkey` in
+`src-tauri/tauri.conf.json`). Local builds need it too:
+`TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/pivot.key)" npm run tauri build`.
 
 How it is put together: [`docs/PLAN.md`](docs/PLAN.md).
 

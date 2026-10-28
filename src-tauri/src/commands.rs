@@ -336,6 +336,35 @@ pub fn reset_sound(state: State<AppState>) -> Res<()> {
     e.db.set_setting("sound_name", "")
 }
 
+// ---------- history & updates ----------
+
+/// Deletes finished history; with `older_than_days`, only entries older than that.
+#[tauri::command]
+pub fn clear_history(app: AppHandle, state: State<AppState>, older_than_days: Option<u32>) -> Res<usize> {
+    let before = older_than_days.map(|d| db::now() - d as f64 * 86400.0);
+    let n = engine(&state).db.clear_history(before)?;
+    changed(&app);
+    Ok(n)
+}
+
+/// How Pivot was installed, which decides whether it can update itself:
+/// "appimage" and "app" (Windows/macOS) can; "package" (.deb/.rpm) goes through the download page.
+#[tauri::command]
+pub fn install_kind() -> &'static str {
+    if cfg!(target_os = "linux") {
+        if std::env::var_os("APPIMAGE").is_some() { "appimage" } else { "package" }
+    } else {
+        "app"
+    }
+}
+
+#[tauri::command]
+pub fn open_releases(app: AppHandle) -> Res<()> {
+    app.opener()
+        .open_url("https://github.com/Lucas-Mitchel17/pivot/releases/latest", None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn open_site(app: AppHandle) -> Res<()> {
     app.opener().open_url(SITE, None::<&str>).map_err(|e| e.to_string())

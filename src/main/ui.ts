@@ -122,3 +122,43 @@ export function categorySelect(categories: Category[], value: number, onchange: 
     categories.map((c) => h("option", { value: String(c.id), selected: c.id === value }, catName(c))),
   );
 }
+
+/**
+ * Modal confirmation; resolves true only when the user clicks the confirm button.
+ * Escape, the backdrop and Cancel all resolve false.
+ */
+export function confirmDialog(opts: { title: string; body?: string; confirm: string }): Promise<boolean> {
+  return new Promise((resolve) => {
+    const dialog = h("dialog", { class: "confirm", "aria-labelledby": "confirm-title" });
+    const done = (ok: boolean) => {
+      dialog.close();
+      dialog.remove();
+      resolve(ok);
+    };
+    const cancel = h("button", { class: "btn ghost", type: "button", onclick: () => done(false) }, t("cancel"));
+    dialog.append(
+      h("h2", { id: "confirm-title" }, opts.title),
+      opts.body ? h("p", { class: "hint" }, opts.body) : "",
+      h(
+        "div",
+        { class: "confirm-actions" },
+        cancel,
+        h("button", { class: "btn danger-fill", type: "button", onclick: () => done(true) }, opts.confirm),
+      ),
+    );
+    dialog.addEventListener("cancel", (e) => {
+      e.preventDefault();
+      done(false);
+    });
+    dialog.addEventListener("click", (e) => {
+      if (e.target === dialog) done(false);
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+    cancel.focus();
+  });
+}
+
+/** "Delete "Stretch"?" with the delete button. */
+export const confirmDelete = (name: string, body?: string) =>
+  confirmDialog({ title: t("confirm.delete", { name }), body, confirm: t("delete") });
