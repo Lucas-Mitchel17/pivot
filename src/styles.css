@@ -87,14 +87,40 @@ button {
 }
 .topbar {
   flex-shrink: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-2);
   height: 3.25rem;
   padding: 0 var(--space-2);
   background: var(--surface-2);
   border-bottom: 1px solid var(--border-subtle);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-left: var(--space-2);
+}
+.brand-mark,
+.brand-mark svg {
+  display: block;
+  width: 1.625rem;
+  height: 1.625rem;
+}
+.brand-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.0625rem;
+  color: var(--text-primary);
+}
+.topbar-end {
+  display: flex;
+  justify-content: flex-end;
+}
+.add-btn {
+  height: 2.25rem;
+  padding: 0 var(--space-4) 0 var(--space-3);
 }
 .tabs {
   display: flex;
@@ -673,6 +699,42 @@ h2 {
   }
   .tab {
     padding: 0 var(--space-2);
+  }
+  .topbar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .tabs {
+    justify-content: safe center;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tab {
+    flex-shrink: 0;
+    font-size: 0.875rem;
+  }
+  .brand-name,
+  .add-label {
+    display: none;
+  }
+  .add-btn {
+    width: 2.25rem;
+    padding: 0;
+  }
+}
+@media (max-width: 520px) {
+  .brand {
+    display: none;
+  }
+  .topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .tabs {
+    gap: 0;
+  }
+  .tab {
+    padding: 0 var(--space-2);
+    font-size: 0.8125rem;
   }
 }
 

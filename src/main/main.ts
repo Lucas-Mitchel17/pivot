@@ -4,6 +4,7 @@ import { api, onChanged, type AppState } from "../lib/api";
 import { h, icon, replace } from "../lib/dom";
 import { t } from "../lib/i18n";
 import { ICONS } from "../lib/icons";
+import { PIVOT_MARK } from "../lib/logo";
 import { applySettings } from "../lib/theme";
 import { newReminder, renderAutomatic } from "./automatic";
 import { newTimer, renderFavorites } from "./favorites";
@@ -37,19 +38,17 @@ async function render() {
     ["history", t("tab.history")],
     ["settings", t("tab.settings")],
   ];
-  const add: Partial<Record<Tab, () => void>> = {
-    favorites: () => newTimer(render),
-    automatic: () => newReminder(render),
-    settings: () => newType(render),
+  const add: Partial<Record<Tab, [string, () => void]>> = {
+    favorites: [t("add.timer"), () => newTimer(render)],
+    automatic: [t("add.reminder"), () => newReminder(render)],
+    settings: [t("add.type"), () => newType(render)],
   };
   const onAdd = add[tab];
 
   const topbar = h(
     "header",
     { class: "topbar" },
-    onAdd
-      ? h("button", { class: "icon-btn", type: "button", "aria-label": t("add"), title: t("add"), onclick: onAdd }, icon(ICONS.plus))
-      : h("span", { style: "width:2.5rem" }),
+    h("div", { class: "brand" }, icon(PIVOT_MARK, "brand-mark"), h("span", { class: "brand-name" }, "Pivot")),
     h(
       "nav",
       { class: "tabs", role: "tablist", "aria-label": t("sections") },
@@ -73,7 +72,18 @@ async function render() {
         ),
       ),
     ),
-    h("span", { style: "width:2.5rem" }),
+    h(
+      "div",
+      { class: "topbar-end" },
+      onAdd
+        ? h(
+            "button",
+            { class: "btn primary add-btn", type: "button", "aria-label": `${t("add")} ${onAdd[0]}`, onclick: onAdd[1] },
+            icon(ICONS.plus, "icon inherit"),
+            h("span", { class: "add-label" }, onAdd[0]),
+          )
+        : null,
+    ),
   );
 
   const content = h("main", { class: "content" }, page);
