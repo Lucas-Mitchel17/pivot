@@ -3,7 +3,8 @@ import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { api, type AppState, type Category, type SoundInfo } from "../lib/api";
 import { h } from "../lib/dom";
 import { catColor, catName, t, type Lang } from "../lib/i18n";
-import { confirmDelete, confirmDialog, segmented } from "./ui";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { confirmDelete, confirmDialog, segmented, switchButton } from "./ui";
 import { canSelfUpdate, checkForUpdates, currentVersion, installUpdate, updateStatus } from "./updates";
 
 /** Colors for user types: mid-light hues that read on both light and dark surfaces. */
@@ -20,6 +21,8 @@ let typeDraft: TypeDraft = blankType();
 
 let soundMessage: { ok: boolean; text: string } | null = null;
 let historyMessage = "";
+/** alert_on_top as it was when this process started; differs after a change that needs a restart. */
+let alertOnTopAtStart: boolean | null = null;
 let autostart = false;
 isEnabled()
   .then((v) => (autostart = v))
@@ -313,6 +316,39 @@ function types(categories: Category[], rerender: () => void) {
   ];
 }
 
+function alertSection(state: AppState) {
+  alertOnTopAtStart ??= state.alert_on_top;
+  const pendingRestart = state.alert_on_top_needs_restart && state.alert_on_top !== alertOnTopAtStart;
+  return h(
+    "section",
+    { class: "section" },
+    h("h2", {}, t("set.alert")),
+    h(
+      "div",
+      { class: "card settings-card" },
+      h(
+        "div",
+        { class: "setting-row", style: "flex-wrap:nowrap" },
+        h(
+          "div",
+          { class: "row-main", style: "cursor:default" },
+          h("span", { class: "row-title" }, t("set.alert.onTop")),
+          h("span", { class: "row-sub" }, t("set.alert.onTop.hint")),
+        ),
+        switchButton(state.alert_on_top, t("set.alert.onTop"), (v) => api.setSetting("alert_on_top", v ? "1" : "0")),
+      ),
+      pendingRestart
+        ? h(
+            "div",
+            { class: "setting-row" },
+            h("span", { class: "ok" }, t("set.alert.restart")),
+            h("button", { class: "btn primary", type: "button", onclick: () => relaunch() }, t("set.alert.restartNow")),
+          )
+        : null,
+    ),
+  );
+}
+
 function history(rerender: () => void) {
   const clear = async (olderThanDays: number | null) => {
     const ok = await confirmDialog({
@@ -397,6 +433,7 @@ export async function renderSettings(state: AppState, categories: Category[], re
     { class: "page" },
     updates(),
     appearance(state),
+    alertSection(state),
     sound(info, rerender),
     ...types(categories, rerender),
     history(rerender),

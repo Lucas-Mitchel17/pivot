@@ -82,13 +82,14 @@ CREATE TABLE settings (
 );
 ";
 
-const DEFAULT_SETTINGS: [(&str, &str); 6] = [
+const DEFAULT_SETTINGS: [(&str, &str); 7] = [
     ("auto_enabled", "1"),
     ("auto_paused_until", "0"),
     ("theme", "system"), // system | light | dark
     ("lang", "pt"),      // pt | en
     ("sound_volume", "60"),
     ("sound_file", ""), // file name inside the data dir, "" = built-in chime
+    ("alert_on_top", "1"), // keep the alert above other windows until it is answered
 ];
 
 pub fn default_path() -> PathBuf {

@@ -158,6 +158,11 @@ const S = {
   "set.updates.error": ["Não foi possível verificar agora. Tente de novo mais tarde.", "Couldn't check right now. Try again later."],
 
   "set.appearance": ["Aparência", "Appearance"],
+  "set.alert": ["Alerta", "Alert"],
+  "set.alert.onTop": ["Manter o alerta por cima de tudo até eu responder", "Keep the alert above everything until I answer"],
+  "set.alert.onTop.hint": ["Desligado, o alerta vai para trás quando você clica em outra janela.", "When off, the alert goes behind other windows when you click them."],
+  "set.alert.restart": ["Reinicie o Pivot para aplicar essa mudança.", "Restart Pivot to apply this change."],
+  "set.alert.restartNow": ["Reiniciar agora", "Restart now"],
   "set.sound": ["Som do alerta", "Alert sound"],
   "set.volume": ["Volume", "Volume"],
   "set.test": ["Testar", "Test"],

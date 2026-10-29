@@ -37,5 +37,30 @@ fn main() {
         }
     }
 
+    keep_alerts_on_top_on_wayland();
     pivot_lib::run(cmd)
+}
+
+/// Wayland doesn't let an app keep its own window above the others, so the alert
+/// falls behind as soon as you click elsewhere. Running through XWayland (the X11
+/// backend) makes GNOME honor "always on top". GTK picks its backend once, at
+/// startup, so this has to happen before Tauri starts and needs a restart to change.
+/// `PIVOT_FORCED_X11` marks a backend we chose, so a restart after turning the option
+/// off (which inherits this process's environment) can undo it; a GDK_BACKEND the user
+/// set themselves is left alone.
+fn keep_alerts_on_top_on_wayland() {
+    const MARK: &str = "PIVOT_FORCED_X11";
+    let ours = std::env::var_os(MARK).is_some();
+    if !pivot_lib::is_wayland() || (std::env::var_os("GDK_BACKEND").is_some() && !ours) {
+        return;
+    }
+    let on_top = Db::open(&db::default_path()).map(|db| db.setting("alert_on_top") == "1").unwrap_or(true);
+    // Safe: still single-threaded, nothing else reads the environment yet.
+    if on_top {
+        std::env::set_var("GDK_BACKEND", "x11");
+        std::env::set_var(MARK, "1");
+    } else if ours {
+        std::env::remove_var("GDK_BACKEND");
+        std::env::remove_var(MARK);
+    }
 }

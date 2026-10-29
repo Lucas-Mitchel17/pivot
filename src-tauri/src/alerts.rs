@@ -12,10 +12,10 @@ pub fn label(session_id: i64) -> String {
 }
 
 pub fn open(app: &AppHandle, s: &Session) {
-    let lang = {
+    let (lang, on_top) = {
         let state = app.state::<AppState>();
         let engine = state.engine.lock().unwrap();
-        Lang::from_setting(&engine.db.setting("lang"))
+        (Lang::from_setting(&engine.db.setting("lang")), engine.db.setting("alert_on_top") == "1")
     };
     let title = display_title(lang, &s.title);
 
@@ -29,7 +29,7 @@ pub fn open(app: &AppHandle, s: &Session) {
             .inner_size(460.0, 500.0)
             .resizable(false)
             .minimizable(false)
-            .always_on_top(true)
+            .always_on_top(on_top)
             .center()
             .focused(true)
             .build();

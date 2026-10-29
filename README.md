@@ -3,7 +3,7 @@
 A posture timer for switching between standing, sitting and taking breaks while you work — the desk "flip cube" timer, on your computer. Runs on Linux, Windows and macOS.
 
 - Tray / top bar icon with a countdown and your favorite timers (`15m — Standing`, `10m — Break`…)
-- An always-on-top alert with sound when time is up; one click starts the next timer in the sequence
+- An alert that stays above your other windows until you answer it (optional), with sound; one click starts the next timer in the sequence
 - Recurring reminders (e.g. "Drink water" every hour, 9:00–18:00, Monday to Friday)
 - Day and week history: time per type, switches between types, reminders done
 - Your own types (e.g. "Active break"), each with its own color in the history
@@ -43,7 +43,8 @@ What that means when you install:
   Security**, scroll down and click **Open Anyway** next to Pivot. Or, in Terminal:
   `xattr -dr com.apple.quarantine /Applications/Pivot.app`
 - **Linux:** nothing to do. On GNOME, the tray icon needs the AppIndicator extension
-  (enabled by default on Ubuntu).
+  (enabled by default on Ubuntu). Wayland doesn't let apps keep a window on top, so when
+  "Keep the alert above everything" is on (the default), Pivot runs through XWayland.
 
 ### Updates
 

@@ -29,6 +29,9 @@ pub struct AppStateDto {
     auto_paused_until: f64,
     theme: String,
     lang: String,
+    alert_on_top: bool,
+    /// Changing `alert_on_top` only takes effect after a restart (Linux Wayland).
+    alert_on_top_needs_restart: bool,
     now: f64,
 }
 
@@ -45,6 +48,8 @@ pub fn get_state(state: State<AppState>) -> Res<AppStateDto> {
         auto_paused_until: e.db.setting("auto_paused_until").parse().unwrap_or(0.0),
         theme: e.db.setting("theme"),
         lang: e.db.setting("lang"),
+        alert_on_top: e.db.setting("alert_on_top") == "1",
+        alert_on_top_needs_restart: crate::is_wayland(),
         now: db::now(),
     })
 }
@@ -238,6 +243,7 @@ pub fn set_setting(app: AppHandle, state: State<AppState>, key: String, value: S
     let allowed = match key.as_str() {
         "theme" => ["system", "light", "dark"].contains(&value.as_str()),
         "lang" => ["pt", "en"].contains(&value.as_str()),
+        "alert_on_top" => ["0", "1"].contains(&value.as_str()),
         _ => false,
     };
     if !allowed {

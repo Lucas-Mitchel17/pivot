@@ -59,6 +59,8 @@ export interface AppState {
   auto_paused_until: number;
   theme: "system" | "light" | "dark";
   lang: "pt" | "en";
+  alert_on_top: boolean;
+  alert_on_top_needs_restart: boolean;
   now: number;
 }
 
@@ -122,7 +124,7 @@ export const api = {
     invoke<{ summary: Summary; days: DayRow[] }>("history", { date, week }),
   alertInfo: (id: number) => invoke<AlertInfo>("alert_info", { id }),
   answer: (id: number, action: Answer, snoozeMin = 5) => invoke("answer", { id, action, snoozeMin }),
-  setSetting: (key: "theme" | "lang", value: string) => invoke("set_setting", { key, value }),
+  setSetting: (key: "theme" | "lang" | "alert_on_top", value: string) => invoke("set_setting", { key, value }),
   openSite: () => invoke("open_site"),
   categories: () => invoke<Category[]>("list_categories"),
   saveCategory: (input: { id: number | null; name: string; color: string }) => invoke<number>("save_category", { input }),

@@ -26,6 +26,13 @@ pub fn changed(app: &AppHandle) {
     let _ = app.emit(CHANGED, ());
 }
 
+/// True on a Linux Wayland session, where "always on top" needs the X11 backend.
+pub fn is_wayland() -> bool {
+    cfg!(target_os = "linux")
+        && (std::env::var_os("WAYLAND_DISPLAY").is_some()
+            || std::env::var("XDG_SESSION_TYPE").is_ok_and(|v| v == "wayland"))
+}
+
 /// Volume (0–100) and custom sound file from the settings.
 pub fn sound_settings(app: &AppHandle) -> (u8, Option<std::path::PathBuf>) {
     let state = app.state::<AppState>();

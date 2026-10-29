@@ -57,6 +57,9 @@ assets/               source SVGs for the app and tray icons
 - **Sound:** the alert plays through rodio at the volume set in Settings (0–100).
   - The default is a chime synthesized at runtime, so no audio file is shipped.
   - A custom file must decode (wav, mp3, ogg, flac, m4a, aac) and last at most 8 s. It is copied to the data dir.
+- **Alert on top:** setting `alert_on_top` (default on) creates the alert window with "always on top".
+  - Wayland ignores that request, so on a Linux Wayland session `main.rs` sets `GDK_BACKEND=x11` before Tauri starts, and the app runs through XWayland, where GNOME honors it.
+  - The backend is picked once at startup, so changing the option there asks for a restart. `PIVOT_FORCED_X11` marks a backend Pivot chose, so a restart can undo it; a `GDK_BACKEND` the user set is left alone.
 - **Deleting** a timer, reminder or type asks for confirmation in a modal. **Settings → History** deletes finished history (all, or older than 30 days); open sessions, timers, reminders and types stay.
 - **Updates:** `tauri-plugin-updater` reads `latest.json` from the latest GitHub release, which `tauri-action` generates and signs.
   - The check runs quietly at startup; Settings → Updates shows the status and a manual button.
