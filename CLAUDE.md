@@ -34,7 +34,11 @@ TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/pivot.key)" npx tauri build --bundles 
 - `npm run tauri dev` registers autostart pointing at `target/debug/pivot`. Delete
   `~/.config/autostart/Pivot.desktop` afterwards; the installed app recreates its own.
 - Lucas runs the installed `.deb` (`/usr/bin/pivot`). Stop it with `pkill -x pivot` and start it
-  again with `setsid -f /usr/bin/pivot --background`.
+  again with `setsid -f /usr/bin/pivot --background` — but only when he asks: `pkill -x pivot`
+  also kills his running app. Stop a test instance by its own PID.
+- Pivot is single-instance per app id, not per database: while Lucas's app runs, launching a test
+  build (even with `PIVOT_DB`) or running `pivot start …` forwards the command to *his* app and
+  his real data. Check `pgrep -a pivot` first.
 - In zsh, a glob with no match aborts the whole command (e.g. `rm a b *.x`): list files explicitly.
 - When stopping dev processes, don't `pkill -f` a pattern that also matches your own shell's
   command line (e.g. "tauri dev").
