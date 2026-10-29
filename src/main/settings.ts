@@ -236,7 +236,7 @@ function types(categories: Category[], rerender: () => void) {
     },
     h(
       "label",
-      { class: "field span-2" },
+      { class: "field span-4" },
       t("set.types.name"),
       h("input", {
         id: "type-name",
@@ -248,7 +248,7 @@ function types(categories: Category[], rerender: () => void) {
     ),
     h(
       "fieldset",
-      { class: "field span-2", style: "border:0;margin:0;padding:0" },
+      { class: "field span-4", style: "border:0;margin:0;padding:0" },
       h("legend", { style: "padding:0;margin-bottom:4px" }, t("set.types.color")),
       h(
         "div",
