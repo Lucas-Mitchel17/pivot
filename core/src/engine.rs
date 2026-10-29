@@ -65,6 +65,25 @@ impl Engine {
         Ok(cur)
     }
 
+    /// Pauses the running timer. A timer that already finished can't be paused.
+    pub fn pause(&mut self, now: f64) -> Result<Option<Session>> {
+        let cur = self.active()?;
+        if let Some(s) = &cur {
+            if s.paused_at.is_none() && s.ends_at > now {
+                self.db.pause_session(s.id, now)?;
+            }
+        }
+        Ok(cur)
+    }
+
+    pub fn resume(&mut self, now: f64) -> Result<Option<Session>> {
+        let cur = self.active()?;
+        if let Some(s) = &cur {
+            self.db.resume_session(s.id, now)?;
+        }
+        Ok(cur)
+    }
+
     pub fn next_preset_for(&self, s: &Session) -> Result<Option<Preset>> {
         let Some(pid) = s.preset_id else { return Ok(None) };
         match self.db.preset(pid)? {
@@ -142,7 +161,7 @@ impl Engine {
     pub fn tick(&mut self, now: f64) -> Result<Vec<Session>> {
         self.check_recurring(now)?;
         let mut open = self.db.open_reminders()?;
-        if let Some(t) = self.active()? {
+        if let Some(t) = self.active()?.filter(|t| t.paused_at.is_none()) {
             open.push(t);
         }
         let mut due = vec![];
@@ -168,6 +187,49 @@ mod tests {
 
     fn monday_at(h: f64) -> f64 {
         day_start(NaiveDate::from_ymd_opt(2026, 10, 26).unwrap()) + h * 3600.0
+    }
+
+    #[test]
+    fn a_paused_timer_does_not_run_out_and_resumes_where_it_was() {
+        let mut e = engine();
+        let t0 = monday_at(8.0);
+        let stand = e.db.find_preset("em-pe").unwrap().unwrap(); // 15 min
+        let id = e.start_preset(&stand, "menu", t0).unwrap();
+        e.pause(t0 + 300.0).unwrap();
+        let s = e.db.session(id).unwrap().unwrap();
+        assert_eq!(s.left_s(t0 + 5000.0), 600.0, "frozen while paused");
+        assert!(e.tick(t0 + 5000.0).unwrap().is_empty(), "never due while paused");
+
+        e.resume(t0 + 1200.0).unwrap(); // paused for 15 min
+        let s = e.db.session(id).unwrap().unwrap();
+        assert_eq!((s.paused_at, s.paused_s, s.ends_at), (None, 900.0, t0 + 1800.0));
+        assert!(e.tick(t0 + 1799.0).unwrap().is_empty());
+        assert_eq!(e.tick(t0 + 1800.0).unwrap().len(), 1);
+        e.answer(id, Answer::Done, 0.0, t0 + 1800.0).unwrap();
+        assert_eq!(e.db.session(id).unwrap().unwrap().run_s(t0 + 1800.0), 900.0);
+    }
+
+    #[test]
+    fn stopping_a_paused_timer_counts_only_the_time_it_ran() {
+        let mut e = engine();
+        let t0 = monday_at(8.0);
+        let stand = e.db.find_preset("em-pe").unwrap().unwrap();
+        let id = e.start_preset(&stand, "menu", t0).unwrap();
+        e.pause(t0 + 120.0).unwrap();
+        e.pause(t0 + 200.0).unwrap(); // pausing twice keeps the first pause
+        e.stop(t0 + 600.0).unwrap();
+        let s = e.db.session(id).unwrap().unwrap();
+        assert_eq!((s.paused_at, s.paused_s, s.run_s(s.ended_at.unwrap())), (None, 480.0, 120.0));
+    }
+
+    #[test]
+    fn a_finished_timer_cannot_be_paused() {
+        let mut e = engine();
+        let t0 = monday_at(8.0);
+        let stand = e.db.find_preset("em-pe").unwrap().unwrap();
+        let id = e.start_preset(&stand, "menu", t0).unwrap();
+        e.pause(t0 + 15.0 * 60.0).unwrap();
+        assert_eq!(e.db.session(id).unwrap().unwrap().paused_at, None);
     }
 
     #[test]

@@ -39,8 +39,14 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     drop(engine);
 
     let mut items: Vec<Box<dyn IsMenuItem<Wry>>> = vec![];
+    let paused = active.as_ref().is_some_and(|s| s.paused_at.is_some());
     let header = match &active {
-        Some(s) => format!("▶ {} · {}", display_title(l, &s.title), fmt_minutes(s.planned_s as f64 / 60.0)),
+        Some(s) => format!(
+            "{} {} · {}",
+            if paused { "⏸" } else { "▶" },
+            display_title(l, &s.title),
+            fmt_minutes(s.planned_s as f64 / 60.0)
+        ),
         None => tr(l, "tray.idle").to_string(),
     };
     items.push(Box::new(MenuItem::with_id(app, "header", header, false, None::<&str>)?));
@@ -50,6 +56,9 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         items.push(Box::new(MenuItem::with_id(app, format!("fav:{}", p.id), text, true, None::<&str>)?));
     }
     items.push(Box::new(PredefinedMenuItem::separator(app)?));
+    let can_pause = active.as_ref().is_some_and(|s| paused || s.ends_at > db::now());
+    let (pause_id, pause_text) = if paused { ("resume", "tray.resume") } else { ("pause", "tray.pause") };
+    items.push(Box::new(MenuItem::with_id(app, pause_id, tr(l, pause_text), can_pause, None::<&str>)?));
     items.push(Box::new(MenuItem::with_id(app, "stop", tr(l, "tray.stop"), active.is_some(), None::<&str>)?));
     items.push(Box::new(CheckMenuItem::with_id(app, "auto", tr(l, "tray.auto"), true, auto_on, None::<&str>)?));
     items.push(Box::new(PredefinedMenuItem::separator(app)?));
@@ -72,6 +81,14 @@ fn on_menu(app: &AppHandle, event: MenuEvent) {
         "quit" => app.exit(0),
         "stop" => {
             let _ = state.engine.lock().unwrap().stop(db::now());
+            changed(app);
+        }
+        "pause" => {
+            let _ = state.engine.lock().unwrap().pause(db::now());
+            changed(app);
+        }
+        "resume" => {
+            let _ = state.engine.lock().unwrap().resume(db::now());
             changed(app);
         }
         "auto" => {
@@ -112,9 +129,10 @@ pub fn tick(app: &AppHandle) {
         let l = Lang::from_setting(&engine.db.setting("lang"));
         match engine.active().ok().flatten() {
             Some(s) => {
-                let left = s.ends_at - db::now();
+                let left = s.left_s(db::now());
                 let clock = if left > 0.0 { fmt_left(left) } else { tr(l, "tray.due").to_string() };
-                format!("\"{}\" {}", display_title(l, &s.title), clock)
+                let mark = if s.paused_at.is_some() { "⏸ " } else { "" };
+                format!("{mark}\"{}\" {}", display_title(l, &s.title), clock)
             }
             None => String::new(),
         }

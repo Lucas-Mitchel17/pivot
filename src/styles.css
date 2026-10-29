@@ -339,6 +339,16 @@ h2 {
   height: 100%;
   background: var(--action-primary);
 }
+.progress.paused > div {
+  background: var(--text-muted);
+}
+.now-clock.paused {
+  color: var(--text-muted);
+}
+.now-actions {
+  display: flex;
+  gap: var(--space-2);
+}
 
 /* ---------- buttons ---------- */
 .btn {
@@ -852,4 +862,89 @@ dialog.confirm p {
 }
 .update-card {
   border-color: var(--border-strong);
+}
+
+/* ---------- goals (History → Week) ---------- */
+.goal-charts {
+  display: grid;
+  gap: var(--space-3);
+}
+.goal-chart {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.goal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.goal-total {
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.goal-total strong {
+  color: var(--text-primary);
+  font-size: 1.1rem;
+}
+.goal-pct {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.goal-pct.met {
+  color: var(--text-highlight);
+}
+.goal-plot {
+  height: 96px;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--divider);
+}
+.goal-day {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.goal-bar {
+  width: min(28px, 70%);
+  border-radius: 4px 4px 0 0;
+  min-height: 2px;
+}
+.goal-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 2px dashed var(--text-muted);
+  z-index: 1;
+}
+.goal-axis {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-2);
+  text-align: center;
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+}
+.goal-axis .met {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.goal-axis .met::after {
+  content: " ✓";
+}
+.goal-input {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.goal-input .input {
+  width: 8rem;
 }

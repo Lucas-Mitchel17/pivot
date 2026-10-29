@@ -30,6 +30,9 @@ const S = {
 
   "now.running": ["Rodando agora", "Running now"],
   "now.due": ["acabou — responda o alerta", "finished — answer the alert"],
+  "now.paused": ["⏸ pausado", "⏸ paused"],
+  "now.pause": ["Pausar", "Pause"],
+  "now.resume": ["Continuar", "Resume"],
   "now.next": ["depois: {next}", "next: {next}"],
   stop: ["Parar", "Stop"],
 
@@ -102,6 +105,14 @@ const S = {
   "hist.days": ["Dias", "Days"],
   "hist.empty": ["Nada registrado nesse dia.", "Nothing logged that day."],
   "hist.dayRow.none": ["nada registrado", "nothing logged"],
+  "hist.goalPct": ["{pct}% da {goal}", "{pct}% of {goal}"],
+  "hist.goals": ["Semana ideal × real", "Ideal week vs. actual"],
+  "hist.goals.of": ["de {ideal}", "of {ideal}"],
+  "hist.goals.legend": ["Barras: o que você fez. Linha tracejada: a meta do dia.", "Bars: what you did. Dashed line: the day's goal."],
+  "hist.goals.none": [
+    "Defina uma meta por dia em Configurações → Tipos para comparar sua semana com a ideal.",
+    "Set a daily goal in Settings → Types to compare your week with the ideal one.",
+  ],
   "src.cli": ["terminal", "terminal"],
   "src.menu": ["menu", "menu"],
   "src.app": ["app", "app"],
@@ -183,6 +194,15 @@ const S = {
   "set.types.edit": ["Editar tipo", "Edit type"],
   "set.types.name": ["Nome", "Name"],
   "set.types.color": ["Cor", "Color"],
+  "set.types.default": ["Cor padrão", "Default color"],
+  "set.types.goal": ["Meta por dia", "Daily goal"],
+  "set.types.goal.min": ["tempo", "time"],
+  "set.types.goal.count": ["vezes", "times"],
+  "set.types.goal.minHint": ["Ex.: 2h, 1h30 ou 45 (minutos). Vazio = sem meta.", "E.g. 2h, 1h30 or 45 (minutes). Empty = no goal."],
+  "set.types.goal.countHint": ["Timers e lembretes feitos por dia. Vazio = sem meta.", "Timers and reminders done per day. Empty = no goal."],
+  "set.types.goalDays": ["Metas valem em", "Goals apply on"],
+  "goal.perDay": ["meta {value}/dia", "goal {value}/day"],
+  "err.goal": ["Meta inválida: use 2h, 1h30 ou minutos.", "Invalid goal: use 2h, 1h30 or minutes."],
   "set.types.deleteHint": ["Timers e histórico desse tipo passam para \"Outro\".", "Timers and history of this type move to \"Other\"."],
 } as const;
 
@@ -205,11 +225,30 @@ export function t(key: Key, vars: Record<string, string | number> = {}): string 
 }
 
 /** Built-ins are translated; the user's own types keep their name. */
-export const catName = (c: Category | undefined) => (c ? (c.key ? t(`cat.${c.key}` as Key) : c.name) : "");
+/** Stored (Portuguese) names of the built-in types, as core/src/db.rs seeds them. */
+export const BUILTIN_NAMES: Record<string, string> = {
+  stand: "Em pé",
+  sit: "Sentado",
+  break: "Pausa",
+  focus: "Foco",
+  water: "Água",
+  other: "Outro",
+};
 
-/** CSS color for a type: theme variable for built-ins, stored hex for the user's own. */
+/** Built-ins are translated until the user renames them. */
+export const catName = (c: Category | undefined) =>
+  c ? (c.key && c.name === BUILTIN_NAMES[c.key] ? t(`cat.${c.key}` as Key) : c.name) : "";
+
+/** CSS color for a type: the stored hex, or the theme's color for a built-in. */
 export const catColor = (c: Category | undefined) =>
-  c ? (c.key ? `var(--cat-${c.key})` : (c.color ?? "var(--text-muted)")) : "var(--text-muted)";
+  c ? (c.color ?? (c.key ? `var(--cat-${c.key})` : "var(--text-muted)")) : "var(--text-muted)";
+
+/** "2h/dia", "8×/dia"; "" without a goal. */
+export function fmtGoal(c: Category | undefined): string {
+  if (!c || c.goal === null) return "";
+  const value = c.goal_unit === "count" ? `${c.goal}×` : fmtDuration(c.goal * 60);
+  return t("goal.perDay", { value });
+}
 export const src = (s: string) => t(`src.${s}` as Key);
 export const out = (o: string) => t(`out.${o}` as Key);
 

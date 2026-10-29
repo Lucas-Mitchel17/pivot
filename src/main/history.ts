@@ -1,7 +1,7 @@
 // History tab: day or week summary (one tile per type), the day's timeline and the log.
 import { api, type Category, type CategoryStat, type DayRow, type Session, type Summary } from "../lib/api";
 import { h, icon } from "../lib/dom";
-import { catColor, catName, dayLabel, fmtDuration, hhmm, out, src, t, title } from "../lib/i18n";
+import { catColor, catName, dayLabel, fmtDuration, fmtGoal, hhmm, out, src, t, title, weekdayNames } from "../lib/i18n";
 import { ICONS } from "../lib/icons";
 import { segmented } from "./ui";
 
@@ -19,7 +19,15 @@ function statValue(c: CategoryStat): string {
   return c.timers === 0 && c.reminders_total > 0 ? `${c.reminders_done}/${c.reminders_total}` : fmtDuration(c.timer_s);
 }
 
-function tiles(s: Summary, cats: Cats) {
+/** Progress toward a type's daily goal: minutes of timers, or timers + reminders done. */
+const goalValue = (c: CategoryStat | undefined, cat: Category) =>
+  !c ? 0 : cat.goal_unit === "count" ? c.timers + c.reminders_done : c.timer_s / 60;
+const fmtGoalValue = (v: number, cat: Category) => (cat.goal_unit === "count" ? `${Math.round(v)}×` : fmtDuration(v * 60));
+
+/** Monday = 0 … Sunday = 6, like the goal_days setting. */
+const weekday = (d: Date) => String((d.getDay() + 6) % 7);
+
+function tiles(s: Summary, cats: Cats, goalToday: boolean) {
   const tile = (label: string, dot: string, value: string, note: string) =>
     h(
       "div",
@@ -32,9 +40,11 @@ function tiles(s: Summary, cats: Cats) {
   const items = s.categories.map((c) => {
     const cat = cats.get(c.category_id);
     const note =
-      c.timers === 0 && c.reminders_total > 0
-        ? t("hist.reminders", { done: c.reminders_done, total: c.reminders_total })
-        : t("hist.pct", { pct: pct(c.timer_s) });
+      cat?.goal != null && goalToday
+        ? t("hist.goalPct", { pct: Math.round((100 * goalValue(c, cat)) / cat.goal), goal: fmtGoal(cat) })
+        : c.timers === 0 && c.reminders_total > 0
+          ? t("hist.reminders", { done: c.reminders_done, total: c.reminders_total })
+          : t("hist.pct", { pct: pct(c.timer_s) });
     return tile(catName(cat), catColor(cat), statValue(c), note);
   });
   items.push(tile(t("hist.switches"), "var(--text-muted)", String(s.switches), t("hist.switches.note")));
@@ -91,6 +101,61 @@ function logRow(x: Session, cats: Cats) {
   );
 }
 
+/**
+ * Ideal week vs. actual, one small chart per type with a goal: a bar per day
+ * (actual) against a dashed line at the daily goal on goal days.
+ */
+function goals(days: DayRow[], categories: Category[], goalDays: string) {
+  const withGoal = categories.filter((c) => c.goal !== null);
+  if (!withGoal.length) return h("p", { class: "card empty" }, t("hist.goals.none"));
+  const names = weekdayNames();
+  const charts = withGoal.map((cat) => {
+    const goal = cat.goal!;
+    const values = days.map((d) => goalValue(d.categories.find((c) => c.category_id === cat.id), cat));
+    const isGoalDay = days.map((d) => goalDays.includes(weekday(new Date(`${d.date}T12:00:00`))));
+    const ideal = goal * isGoalDay.filter(Boolean).length;
+    const actual = values.reduce((a, b) => a + b, 0);
+    const pct = ideal ? Math.round((100 * actual) / ideal) : 0;
+    const top = Math.max(goal, ...values) * 1.1;
+    const y = (v: number) => `${Math.min(100, (100 * v) / top)}%`;
+    return h(
+      "section",
+      { class: "card goal-chart", "aria-label": catName(cat) },
+      h(
+        "div",
+        { class: "goal-head" },
+        h("span", { class: "tile-label" }, h("span", { class: "dot", style: `background:${catColor(cat)}` }), catName(cat)),
+        h(
+          "span",
+          { class: "goal-total" },
+          h("strong", { class: "mono" }, fmtGoalValue(actual, cat)),
+          ` ${t("hist.goals.of", { ideal: fmtGoalValue(ideal, cat) })}`,
+          h("span", { class: `goal-pct${pct >= 100 ? " met" : ""}` }, `${pct}%`),
+        ),
+      ),
+      h(
+        "div",
+        { class: "goal-plot" },
+        days.map((_, i) => {
+          const tip = `${names[i]}: ${fmtGoalValue(values[i], cat)}${isGoalDay[i] ? ` / ${fmtGoalValue(goal, cat)}` : ""}`;
+          return h(
+            "div",
+            { class: "goal-day", title: tip, "aria-label": tip, role: "img" },
+            isGoalDay[i] ? h("span", { class: "goal-line", style: `bottom:${y(goal)}` }) : null,
+            values[i] > 0 ? h("span", { class: "goal-bar", style: `height:${y(values[i])};background:${catColor(cat)}` }) : null,
+          );
+        }),
+      ),
+      h(
+        "div",
+        { class: "goal-axis", "aria-hidden": "true" },
+        names.map((n, i) => h("span", { class: isGoalDay[i] && values[i] >= goal ? "met" : "" }, n)),
+      ),
+    );
+  });
+  return h("div", { class: "goal-charts" }, h("p", { class: "hint" }, t("hist.goals.legend")), charts);
+}
+
 function dayRows(days: DayRow[], cats: Cats) {
   return h(
     "ul",
@@ -122,7 +187,8 @@ function dayRows(days: DayRow[], cats: Cats) {
 
 export async function renderHistory(categories: Category[], rerender: () => void): Promise<HTMLElement> {
   const cats: Cats = new Map(categories.map((c) => [c.id, c]));
-  const { summary, days } = await api.history(iso(day), week);
+  const [{ summary, days }, state] = await Promise.all([api.history(iso(day), week), api.state()]);
+  const goalToday = !week && state.goal_days.includes(weekday(day));
   const move = (dir: number) => {
     const d = new Date(day);
     d.setDate(d.getDate() + dir * (week ? 7 : 1));
@@ -155,7 +221,8 @@ export async function renderHistory(categories: Category[], rerender: () => void
         rerender();
       }),
     ),
-    tiles(summary, cats),
+    tiles(summary, cats, goalToday),
+    week ? h("section", { class: "section" }, h("h2", {}, t("hist.goals")), goals(days, categories, state.goal_days)) : null,
     week ? null : timeline(summary, cats),
     h(
       "section",

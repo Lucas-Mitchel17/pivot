@@ -29,6 +29,8 @@ pub struct AppStateDto {
     auto_paused_until: f64,
     theme: String,
     lang: String,
+    /// Weekdays the daily goals apply to, "01234" = Mon–Fri.
+    goal_days: String,
     alert_on_top: bool,
     /// Changing `alert_on_top` only takes effect after a restart (Linux Wayland).
     alert_on_top_needs_restart: bool,
@@ -48,6 +50,7 @@ pub fn get_state(state: State<AppState>) -> Res<AppStateDto> {
         auto_paused_until: e.db.setting("auto_paused_until").parse().unwrap_or(0.0),
         theme: e.db.setting("theme"),
         lang: e.db.setting("lang"),
+        goal_days: e.db.setting("goal_days"),
         alert_on_top: e.db.setting("alert_on_top") == "1",
         alert_on_top_needs_restart: crate::is_wayland(),
         now: db::now(),
@@ -106,6 +109,20 @@ pub fn stop_timer(app: AppHandle, state: State<AppState>) -> Res<()> {
     if let Some(s) = stopped {
         alerts::close(&app, s.id);
     }
+    changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn pause_timer(app: AppHandle, state: State<AppState>) -> Res<()> {
+    engine(&state).pause(db::now())?;
+    changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn resume_timer(app: AppHandle, state: State<AppState>) -> Res<()> {
+    engine(&state).resume(db::now())?;
     changed(&app);
     Ok(())
 }
@@ -244,6 +261,7 @@ pub fn set_setting(app: AppHandle, state: State<AppState>, key: String, value: S
         "theme" => ["system", "light", "dark"].contains(&value.as_str()),
         "lang" => ["pt", "en"].contains(&value.as_str()),
         "alert_on_top" => ["0", "1"].contains(&value.as_str()),
+        "goal_days" => !value.is_empty() && value.len() <= 7 && value.chars().all(|c| ('0'..='6').contains(&c)),
         _ => false,
     };
     if !allowed {

@@ -1,8 +1,8 @@
 // Settings tab: appearance, alert sound (volume, test, custom file) and types.
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
-import { api, type AppState, type Category, type SoundInfo } from "../lib/api";
+import { api, type AppState, type BuiltinKey, type Category, type GoalUnit, type SoundInfo } from "../lib/api";
 import { h } from "../lib/dom";
-import { catColor, catName, t, type Lang } from "../lib/i18n";
+import { BUILTIN_NAMES, catColor, catName, fmtGoal, t, weekdayLetters, type Lang } from "../lib/i18n";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { confirmDelete, confirmDialog, segmented, switchButton } from "./ui";
 import { canSelfUpdate, checkForUpdates, currentVersion, installUpdate, updateStatus } from "./updates";
@@ -12,11 +12,16 @@ export const TYPE_COLORS = ["#f5c451", "#57e389", "#ff8a8a", "#c061cb", "#ffa348
 
 interface TypeDraft {
   id: number | null;
+  /** Set when editing a built-in. */
+  key: BuiltinKey | null;
   name: string;
-  color: string;
+  /** null = the built-in's theme color. */
+  color: string | null;
+  goal: string;
+  goalUnit: GoalUnit;
   error: string;
 }
-const blankType = (): TypeDraft => ({ id: null, name: "", color: TYPE_COLORS[0], error: "" });
+const blankType = (): TypeDraft => ({ id: null, key: null, name: "", color: TYPE_COLORS[0], goal: "", goalUnit: "min", error: "" });
 let typeDraft: TypeDraft = blankType();
 
 let soundMessage: { ok: boolean; text: string } | null = null;
@@ -180,50 +185,135 @@ function sound(info: SoundInfo, rerender: () => void) {
   );
 }
 
-function types(categories: Category[], rerender: () => void) {
+/** Goal in minutes from "2h", "1h30", "1:30" (hours:minutes) or "45" (minutes). */
+export function parseGoalMinutes(text: string): number | null {
+  const v = text.trim().toLowerCase().replace(/\s+/g, "");
+  let m: RegExpMatchArray | null;
+  let minutes: number;
+  if ((m = v.match(/^(\d+)(?:h|:)(\d{1,2})?(?:m|min)?$/))) minutes = Number(m[1]) * 60 + Number(m[2] ?? 0);
+  else if ((m = v.match(/^(\d+)(?:m|min)?$/))) minutes = Number(m[1]);
+  else return null;
+  return minutes > 0 && minutes <= 24 * 60 ? minutes : null;
+}
+
+function goalField(c: Category): string {
+  if (c.goal === null) return "";
+  if (c.goal_unit === "count") return String(c.goal);
+  const h = Math.floor(c.goal / 60);
+  const m = Math.round(c.goal % 60);
+  return h ? (m ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`) : String(m);
+}
+
+function goalDays(state: AppState) {
+  const days = new Set(state.goal_days);
+  return h(
+    "div",
+    { class: "card settings-card" },
+    h(
+      "div",
+      { class: "setting-row" },
+      h("span", { class: "row-title" }, t("set.types.goalDays")),
+      h(
+        "div",
+        { class: "days", role: "group", "aria-label": t("set.types.goalDays") },
+        weekdayLetters().map((l, i) => {
+          const d = String(i);
+          return h(
+            "button",
+            {
+              class: "day",
+              type: "button",
+              "aria-pressed": String(days.has(d)),
+              onclick: () => {
+                if (days.has(d) && days.size === 1) return; // keep at least one day
+                if (days.has(d)) days.delete(d);
+                else days.add(d);
+                api.setSetting("goal_days", [...days].sort().join(""));
+              },
+            },
+            l,
+          );
+        }),
+      ),
+    ),
+  );
+}
+
+function types(state: AppState, categories: Category[], rerender: () => void) {
   if (typeDraft.id !== null && !categories.some((c) => c.id === typeDraft.id)) typeDraft = blankType();
+  const editing = categories.find((c) => c.id === typeDraft.id);
 
   const rows = categories.map((c) =>
     h(
       "li",
       { class: `row${typeDraft.id === c.id ? " editing" : ""}` },
       h("span", { class: "dot", style: `background:${catColor(c)};width:14px;height:14px` }),
-      c.key
-        ? h(
-            "div",
-            { class: "row-main", style: "cursor:default;flex-direction:row;align-items:center;gap:8px" },
-            h("span", { class: "row-title" }, catName(c)),
-            h("span", { class: "tag" }, t("set.types.builtin")),
-          )
-        : h(
-            "button",
-            {
-              class: "row-main",
-              type: "button",
-              onclick: () => {
-                typeDraft = { id: c.id, name: c.name, color: c.color ?? TYPE_COLORS[0], error: "" };
-                rerender();
-                document.querySelector<HTMLInputElement>("#type-name")?.focus();
-              },
-            },
-            h("span", { class: "row-title" }, c.name),
-          ),
+      h(
+        "button",
+        {
+          class: "row-main",
+          type: "button",
+          onclick: () => {
+            typeDraft = {
+              id: c.id,
+              key: c.key,
+              name: catName(c),
+              color: c.color ?? (c.key ? null : TYPE_COLORS[0]),
+              goal: goalField(c),
+              goalUnit: c.goal_unit,
+              error: "",
+            };
+            rerender();
+            document.querySelector<HTMLInputElement>("#type-name")?.focus();
+          },
+        },
+        h(
+          "span",
+          { style: "display:flex;align-items:center;gap:8px" },
+          h("span", { class: "row-title" }, catName(c)),
+          c.key ? h("span", { class: "tag" }, t("set.types.builtin")) : null,
+        ),
+        c.goal !== null ? h("span", { class: "row-sub" }, fmtGoal(c)) : null,
+      ),
     ),
   );
 
   const save = async () => {
-    if (!typeDraft.name.trim()) {
-      typeDraft.error = t("err.name");
-      return rerender();
-    }
+    const name = typeDraft.name.trim();
+    let goal: number | null = null;
+    if (!name) typeDraft.error = t("err.name");
+    else if (typeDraft.goal.trim()) {
+      goal = typeDraft.goalUnit === "count" ? Number(typeDraft.goal) : parseGoalMinutes(typeDraft.goal);
+      typeDraft.error = goal !== null && Number.isInteger(goal) && goal > 0 && goal <= 1440 ? "" : t("err.goal");
+    } else typeDraft.error = "";
+    if (typeDraft.error) return rerender();
+    // A built-in left with its translated name keeps the stored one, so it stays translated.
+    const stored = editing?.key && name === t(`cat.${editing.key}` as "cat.stand") ? BUILTIN_NAMES[editing.key] : name;
     try {
-      await api.saveCategory({ id: typeDraft.id, name: typeDraft.name.trim(), color: typeDraft.color });
+      await api.saveCategory({ id: typeDraft.id, name: stored, color: typeDraft.color, goal, goal_unit: typeDraft.goalUnit });
       typeDraft = blankType();
     } catch (err) {
       typeDraft.error = String(err).includes("duplicate") ? t("err.duplicate") : String(err);
     }
     rerender();
   };
+
+  const swatch = (color: string | null, label: string, background: string) =>
+    h("button", {
+      class: "swatch",
+      type: "button",
+      style: `background:${background}`,
+      "aria-label": label,
+      title: label,
+      "aria-pressed": String(color === typeDraft.color),
+      onclick: (e: Event) => {
+        typeDraft.color = color;
+        (e.currentTarget as HTMLElement)
+          .closest(".swatches")
+          ?.querySelectorAll(".swatch")
+          .forEach((s) => s.setAttribute("aria-pressed", String(s === e.currentTarget)));
+      },
+    });
 
   const form = h(
     "form",
@@ -253,29 +343,47 @@ function types(categories: Category[], rerender: () => void) {
       h(
         "div",
         { class: "swatches" },
-        TYPE_COLORS.map((color) =>
-          h("button", {
-            class: "swatch",
-            type: "button",
-            style: `background:${color}`,
-            "aria-label": color,
-            "aria-pressed": String(color === typeDraft.color),
-            onclick: (e: Event) => {
-              typeDraft.color = color;
-              (e.currentTarget as HTMLElement)
-                .closest(".swatches")
-                ?.querySelectorAll(".swatch")
-                .forEach((s) => s.setAttribute("aria-pressed", String(s === e.currentTarget)));
-            },
-          }),
-        ),
+        typeDraft.key ? swatch(null, t("set.types.default"), `var(--cat-${typeDraft.key})`) : null,
+        TYPE_COLORS.map((color) => swatch(color, color, color)),
       ),
     ),
-    typeDraft.error ? h("p", { class: "error", role: "alert" }, typeDraft.error) : null,
+    h(
+      "div",
+      { class: "field span-4" },
+      h("label", { for: "type-goal" }, t("set.types.goal")),
+      h(
+        "div",
+        { class: "goal-input" },
+        h("input", {
+          id: "type-goal",
+          class: "input",
+          value: typeDraft.goal,
+          inputmode: typeDraft.goalUnit === "count" ? "numeric" : "text",
+          placeholder: typeDraft.goalUnit === "count" ? "8" : "2h",
+          maxlength: 6,
+          oninput: (e: Event) => (typeDraft.goal = (e.target as HTMLInputElement).value),
+        }),
+        segmented(
+          t("set.types.goal"),
+          [
+            ["min", t("set.types.goal.min")],
+            ["count", t("set.types.goal.count")],
+          ],
+          typeDraft.goalUnit,
+          (v) => {
+            typeDraft.goalUnit = v;
+            typeDraft.goal = "";
+            rerender();
+          },
+        ),
+      ),
+      h("span", { class: "hint", style: "font-weight:400" }, t(typeDraft.goalUnit === "count" ? "set.types.goal.countHint" : "set.types.goal.minHint")),
+    ),
+    typeDraft.error ? h("p", { class: "error span-4", role: "alert" }, typeDraft.error) : null,
     h(
       "div",
       { class: "form-actions" },
-      typeDraft.id !== null
+      typeDraft.id !== null && !typeDraft.key
         ? h(
             "button",
             {
@@ -283,8 +391,7 @@ function types(categories: Category[], rerender: () => void) {
               type: "button",
               title: t("set.types.deleteHint"),
               onclick: async () => {
-                const name = categories.find((c) => c.id === typeDraft.id)?.name ?? typeDraft.name;
-                if (!(await confirmDelete(name, t("set.types.deleteHint")))) return;
+                if (!(await confirmDelete(typeDraft.name, t("set.types.deleteHint")))) return;
                 await api.deleteCategory(typeDraft.id!);
                 typeDraft = blankType();
                 rerender();
@@ -302,7 +409,7 @@ function types(categories: Category[], rerender: () => void) {
         h("button", { class: "btn primary", type: "submit" }, t(typeDraft.id !== null ? "save.changes" : "save")),
       ),
     ),
-    typeDraft.id !== null ? h("p", { class: "hint span-4" }, t("set.types.deleteHint")) : null,
+    typeDraft.id !== null && !typeDraft.key ? h("p", { class: "hint span-4" }, t("set.types.deleteHint")) : null,
   );
 
   return [
@@ -311,6 +418,7 @@ function types(categories: Category[], rerender: () => void) {
       { class: "section" },
       h("div", { class: "section-head" }, h("h2", {}, t("set.types")), h("span", { class: "hint" }, t("set.types.hint"))),
       h("ul", { class: "card list" }, rows),
+      goalDays(state),
     ),
     h("section", { class: "section" }, h("h2", {}, t(typeDraft.id !== null ? "set.types.edit" : "set.types.new")), form),
   ];
@@ -435,7 +543,7 @@ export async function renderSettings(state: AppState, categories: Category[], re
     appearance(state),
     alertSection(state),
     sound(info, rerender),
-    ...types(categories, rerender),
+    ...types(state, categories, rerender),
     history(rerender),
   );
 }

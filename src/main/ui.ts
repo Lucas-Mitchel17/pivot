@@ -42,7 +42,11 @@ export function nowCard(state: AppState) {
   const a = state.active;
   if (!a) return null;
   const s = a.session;
-  const total = Math.max(1, s.ends_at - s.started_at);
+  const paused = s.paused_at !== null;
+  // Progress counts only the time the timer ran: shift its start by the pauses.
+  const ranFrom = s.started_at + s.paused_s;
+  const total = Math.max(1, s.ends_at - ranFrom);
+  const due = !paused && s.ends_at <= state.now;
   return h(
     "section",
     { class: "card now", "aria-label": t("now.running") },
@@ -53,20 +57,38 @@ export function nowCard(state: AppState) {
         "div",
         { class: "now-line" },
         h("span", { class: "display row-title" }, title(s.title)),
-        h("span", { class: "mono now-clock", "data-ends": s.ends_at }, fmtLeft(s.ends_at - state.now)),
+        paused
+          ? h("span", { class: "mono now-clock paused" }, fmtLeft(s.ends_at - s.paused_at!))
+          : h("span", { class: "mono now-clock", "data-ends": s.ends_at }, fmtLeft(s.ends_at - state.now)),
       ),
       h(
         "div",
-        { class: "progress", "aria-hidden": "true" },
-        h("div", { "data-progress": `${s.started_at},${s.ends_at}`, style: `width:${progressPct(s.started_at, s.ends_at, state.now)}%` }),
+        { class: `progress${paused ? " paused" : ""}`, "aria-hidden": "true" },
+        paused
+          ? h("div", { style: `width:${progressPct(ranFrom, s.ends_at, s.paused_at!)}%` })
+          : h("div", { "data-progress": `${ranFrom},${s.ends_at}`, style: `width:${progressPct(ranFrom, s.ends_at, state.now)}%` }),
       ),
       h(
         "span",
         { class: "row-sub" },
-        a.next ? t("now.next", { next: `${title(a.next.title)} ${fmtMinutes(a.next.minutes)}` }) : `${fmtMinutes(total / 60)}`,
+        [
+          paused ? t("now.paused") : null,
+          a.next ? t("now.next", { next: `${title(a.next.title)} ${fmtMinutes(a.next.minutes)}` }) : fmtMinutes(total / 60),
+        ]
+          .filter(Boolean)
+          .join(" · "),
       ),
     ),
-    h("button", { class: "btn", type: "button", onclick: () => api.stop() }, icon(ICONS.stop), t("stop")),
+    h(
+      "div",
+      { class: "now-actions" },
+      due
+        ? null
+        : paused
+          ? h("button", { class: "btn primary", type: "button", onclick: () => api.resume() }, icon(ICONS.play, "icon inherit"), t("now.resume"))
+          : h("button", { class: "btn", type: "button", onclick: () => api.pause() }, icon(ICONS.pause, "icon inherit"), t("now.pause")),
+      h("button", { class: "btn", type: "button", onclick: () => api.stop() }, icon(ICONS.stop), t("stop")),
+    ),
   );
 }
 

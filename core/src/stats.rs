@@ -61,8 +61,10 @@ pub fn summarize(db: &Db, start: f64, end: f64, now: f64) -> Result<Summary> {
             }
             continue;
         }
-        let stop = s.ended_at.unwrap_or(now);
-        let secs = (stop.min(end) - s.started_at.max(start)).max(0.0);
+        // Time inside [start, end), minus pauses (approximate for a session split across days).
+        let until = s.ended_at.unwrap_or(now);
+        let stop = s.paused_at.map_or(until, |p| p.min(until));
+        let secs = (stop.min(end) - s.started_at.max(start)).max(0.0).min(s.run_s(until));
         stat.timer_s += secs;
         stat.timers += 1;
         out.tracked_s += secs;
@@ -137,7 +139,7 @@ mod tests {
         let mut e = Engine::new(Db::in_memory().unwrap());
         let active_break = e
             .db
-            .save_category(&CategoryInput { id: None, name: "Pausa com atividade".into(), color: "#f5c451".into() })
+            .save_category(&CategoryInput { id: None, name: "Pausa com atividade".into(), color: Some("#f5c451".into()), goal: None, goal_unit: "min".into() })
             .unwrap();
         let day = NaiveDate::from_ymd_opt(2026, 10, 26).unwrap();
         let t = day_start(day) + 8.0 * 3600.0;
@@ -146,6 +148,21 @@ mod tests {
         let s = summarize_day(&e.db, day, t + 700.0).unwrap();
         assert_eq!(s.category(active_break).unwrap().timer_s, 600.0);
         assert_eq!(s.switches, 0);
+    }
+
+    #[test]
+    fn paused_time_is_not_counted() {
+        let mut e = Engine::new(Db::in_memory().unwrap());
+        let day = NaiveDate::from_ymd_opt(2026, 10, 26).unwrap();
+        let t = day_start(day) + 8.0 * 3600.0;
+        let stand = e.db.find_preset("em-pe").unwrap().unwrap();
+        e.start_preset(&stand, "menu", t).unwrap();
+        e.pause(t + 300.0).unwrap();
+        let s = summarize_day(&e.db, day, t + 3000.0).unwrap();
+        assert_eq!(s.tracked_s, 300.0, "still paused");
+        e.resume(t + 900.0).unwrap();
+        let s = summarize_day(&e.db, day, t + 1000.0).unwrap();
+        assert_eq!(s.tracked_s, 400.0);
     }
 
     #[test]

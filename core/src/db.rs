@@ -17,7 +17,7 @@ fn err(e: rusqlite::Error) -> String {
     e.to_string()
 }
 
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 
 /// Built-in categories: (key, stored name). Names are Portuguese and get
 /// translated for display; user categories keep the name they were given.
@@ -82,7 +82,7 @@ CREATE TABLE settings (
 );
 ";
 
-const DEFAULT_SETTINGS: [(&str, &str); 7] = [
+const DEFAULT_SETTINGS: [(&str, &str); 8] = [
     ("auto_enabled", "1"),
     ("auto_paused_until", "0"),
     ("theme", "system"), // system | light | dark
@@ -90,6 +90,7 @@ const DEFAULT_SETTINGS: [(&str, &str); 7] = [
     ("sound_volume", "60"),
     ("sound_file", ""), // file name inside the data dir, "" = built-in chime
     ("alert_on_top", "1"), // keep the alert above other windows until it is answered
+    ("goal_days", "01234"), // weekdays the daily goals apply to (Mon–Fri)
 ];
 
 pub fn default_path() -> PathBuf {
@@ -139,6 +140,9 @@ pub fn parse_hhmm(value: &str) -> Option<NaiveTime> {
     NaiveTime::from_hms_opt(h.parse().ok()?, m.parse().ok()?, 0)
 }
 
+/// Goal units: minutes of timers per day, or times per day (timers + reminders done).
+pub const GOAL_UNITS: [&str; 2] = ["min", "count"];
+
 fn valid_color(c: &str) -> bool {
     c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|ch| ch.is_ascii_hexdigit())
 }
@@ -149,9 +153,22 @@ pub struct Category {
     /// Set for built-in categories ("stand", "sit"…), `None` for user ones.
     pub key: Option<String>,
     pub name: String,
-    /// "#rrggbb"; built-ins use `None` and take their color from the theme.
+    /// "#rrggbb"; `None` (built-ins only) takes the color from the theme.
     pub color: Option<String>,
     pub sort_order: i64,
+    /// Daily goal, in `goal_unit`; `None` = no goal.
+    pub goal: Option<f64>,
+    pub goal_unit: String,
+}
+
+impl Category {
+    /// A built-in keeps its translated name until the user renames it.
+    pub fn renamed(&self) -> bool {
+        match self.key.as_deref() {
+            Some(key) => BUILTIN_CATEGORIES.iter().any(|(k, n)| *k == key && *n != self.name),
+            None => true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -226,6 +243,23 @@ pub struct Session {
     pub ended_at: Option<f64>,
     pub outcome: Option<String>,
     pub snoozes: i64,
+    /// Set while the timer is paused.
+    pub paused_at: Option<f64>,
+    /// Seconds spent paused (finished pauses only).
+    pub paused_s: f64,
+}
+
+impl Session {
+    /// Seconds the timer actually ran up to `until` (its end, or now).
+    pub fn run_s(&self, until: f64) -> f64 {
+        let stop = self.paused_at.map_or(until, |p| p.min(until));
+        (stop - self.started_at - self.paused_s).max(0.0)
+    }
+
+    /// Seconds left, frozen while paused.
+    pub fn left_s(&self, now: f64) -> f64 {
+        self.ends_at - self.paused_at.unwrap_or(now)
+    }
 }
 
 pub fn local_date(ts: f64) -> NaiveDate {
@@ -248,7 +282,10 @@ pub struct Db {
 pub struct CategoryInput {
     pub id: Option<i64>,
     pub name: String,
-    pub color: String,
+    /// Required for user categories; `None` gives a built-in its theme color back.
+    pub color: Option<String>,
+    pub goal: Option<f64>,
+    pub goal_unit: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -308,12 +345,28 @@ impl Db {
                 ));
             }
             sql.push_str("PRAGMA user_version = 1; COMMIT;");
-            self.conn.execute_batch(&sql).map_err(|e| {
-                let _ = self.conn.execute_batch("ROLLBACK");
-                err(e)
-            })?;
+            self.batch(&sql)?;
+        }
+        if self.version()? < 2 {
+            // 0.4: daily goals per type, pausing timers.
+            self.batch(
+                "BEGIN;
+                 ALTER TABLE categories ADD COLUMN goal REAL;
+                 ALTER TABLE categories ADD COLUMN goal_unit TEXT NOT NULL DEFAULT 'min';
+                 ALTER TABLE sessions ADD COLUMN paused_at REAL;
+                 ALTER TABLE sessions ADD COLUMN paused_s REAL NOT NULL DEFAULT 0;
+                 PRAGMA user_version = 2;
+                 COMMIT;",
+            )?;
         }
         Ok(())
+    }
+
+    fn batch(&self, sql: &str) -> Result<()> {
+        self.conn.execute_batch(sql).map_err(|e| {
+            let _ = self.conn.execute_batch("ROLLBACK");
+            err(e)
+        })
     }
 
     fn seed(&self) -> Result<()> {
@@ -393,10 +446,20 @@ impl Db {
             .map_err(err)
     }
 
-    /// Creates or updates a user category. Built-ins can't be changed.
+    /// Creates or updates a category. Built-ins can be renamed, recolored and
+    /// given a goal, but keep their key (and can't be deleted).
     pub fn save_category(&self, c: &CategoryInput) -> Result<i64> {
         let name = c.name.trim();
-        if name.is_empty() || !valid_color(&c.color) {
+        let builtin = match c.id {
+            Some(id) => self.category(id)?.ok_or("category not found")?.key.is_some(),
+            None => false,
+        };
+        let color_ok = match &c.color {
+            Some(color) => valid_color(color),
+            None => builtin,
+        };
+        let goal_ok = c.goal.is_none_or(|g| g > 0.0 && g <= 24.0 * 60.0) && GOAL_UNITS.contains(&c.goal_unit.as_str());
+        if name.is_empty() || !color_ok || !goal_ok {
             return Err("invalid category".into());
         }
         let taken: Option<i64> = self
@@ -415,23 +478,20 @@ impl Db {
                     .map_err(err)?;
                 self.conn
                     .execute(
-                        "INSERT INTO categories(name, color, sort_order, created_at) VALUES (?1, ?2, ?3, ?4)",
-                        params![name, c.color, order, now()],
+                        "INSERT INTO categories(name, color, sort_order, created_at, goal, goal_unit) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                        params![name, c.color, order, now(), c.goal, c.goal_unit],
                     )
                     .map_err(err)?;
                 Ok(self.conn.last_insert_rowid())
             }
             Some(id) => {
-                let changed = self
-                    .conn
+                self.conn
                     .execute(
-                        "UPDATE categories SET name = ?1, color = ?2 WHERE id = ?3 AND key IS NULL",
-                        params![name, c.color, id],
+                        "UPDATE categories SET name = ?1, color = ?2, goal = ?3, goal_unit = ?4 WHERE id = ?5",
+                        params![name, c.color, c.goal, c.goal_unit, id],
                     )
                     .map_err(err)?;
-                if changed == 0 {
-                    return Err("built-in categories can't be changed".into());
-                }
                 Ok(id)
             }
         }
@@ -661,11 +721,36 @@ impl Db {
             .map_err(err)
     }
 
+    /// Ending a paused timer closes the pause too.
     pub fn end_session(&self, id: i64, outcome: &str, now: f64) -> Result<()> {
         self.conn
             .execute(
-                "UPDATE sessions SET ended_at = ?1, outcome = ?2 WHERE id = ?3 AND ended_at IS NULL",
+                "UPDATE sessions SET ended_at = ?1, outcome = ?2, \
+                 paused_s = paused_s + COALESCE(?1 - paused_at, 0), paused_at = NULL \
+                 WHERE id = ?3 AND ended_at IS NULL",
                 params![now, outcome, id],
+            )
+            .map(|_| ())
+            .map_err(err)
+    }
+
+    pub fn pause_session(&self, id: i64, now: f64) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE sessions SET paused_at = ?1 WHERE id = ?2 AND ended_at IS NULL AND paused_at IS NULL",
+                params![now, id],
+            )
+            .map(|_| ())
+            .map_err(err)
+    }
+
+    /// Moves the end forward by the time spent paused.
+    pub fn resume_session(&self, id: i64, now: f64) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE sessions SET ends_at = ends_at + (?1 - paused_at), paused_s = paused_s + (?1 - paused_at), \
+                 paused_at = NULL WHERE id = ?2 AND paused_at IS NOT NULL",
+                params![now, id],
             )
             .map(|_| ())
             .map_err(err)
@@ -738,6 +823,8 @@ fn category_row(r: &Row) -> rusqlite::Result<Category> {
         name: r.get("name")?,
         color: r.get("color")?,
         sort_order: r.get("sort_order")?,
+        goal: r.get("goal")?,
+        goal_unit: r.get("goal_unit")?,
     })
 }
 
@@ -782,6 +869,8 @@ fn session_row(r: &Row) -> rusqlite::Result<Session> {
         ended_at: r.get("ended_at")?,
         outcome: r.get("outcome")?,
         snoozes: r.get("snoozes")?,
+        paused_at: r.get("paused_at")?,
+        paused_s: r.get("paused_s")?,
     })
 }
 
@@ -811,7 +900,7 @@ mod tests {
         let path = dir.join("pivot.db");
         let _ = std::fs::remove_dir_all(&dir);
         let db = Db::open(&path).unwrap();
-        db.save_category(&CategoryInput { id: None, name: "Mine".into(), color: "#57e389".into() }).unwrap();
+        db.save_category(&CategoryInput { id: None, name: "Mine".into(), color: Some("#57e389".into()), goal: None, goal_unit: "min".into() }).unwrap();
         drop(db);
         let db = Db::open(&path).unwrap();
         assert_eq!(db.version().unwrap(), SCHEMA_VERSION);
@@ -823,24 +912,75 @@ mod tests {
     #[test]
     fn user_categories_can_be_created_edited_and_deleted() {
         let db = Db::in_memory().unwrap();
-        let id = db.save_category(&CategoryInput { id: None, name: "Pausa com atividade".into(), color: "#f5c451".into() }).unwrap();
+        let id = db.save_category(&CategoryInput { id: None, name: "Pausa com atividade".into(), color: Some("#f5c451".into()), goal: None, goal_unit: "min".into() }).unwrap();
         let p = db.add_preset("Alongar", 5.0, id, None, true).unwrap();
-        db.save_category(&CategoryInput { id: Some(id), name: "Alongamento".into(), color: "#57e389".into() }).unwrap();
+        db.save_category(&CategoryInput { id: Some(id), name: "Alongamento".into(), color: Some("#57e389".into()), goal: None, goal_unit: "min".into() }).unwrap();
         assert_eq!(db.category(id).unwrap().unwrap().name, "Alongamento");
         db.delete_category(id).unwrap();
         assert_eq!(db.preset(p).unwrap().unwrap().category_id, db.category_id("other").unwrap());
     }
 
     #[test]
-    fn rejects_bad_or_builtin_category_changes() {
+    fn rejects_bad_category_changes() {
         let db = Db::in_memory().unwrap();
         let stand = db.category_id("stand").unwrap();
-        assert!(db.save_category(&CategoryInput { id: Some(stand), name: "X".into(), color: "#000000".into() }).is_err());
         assert!(db.delete_category(stand).is_err());
-        assert!(db.save_category(&CategoryInput { id: None, name: "Y".into(), color: "red".into() }).is_err());
-        assert!(db.save_category(&CategoryInput { id: None, name: "em pé".into(), color: "#000000".into() }).is_err());
+        assert!(db.save_category(&CategoryInput { id: None, name: "Y".into(), color: Some("red".into()), goal: None, goal_unit: "min".into() }).is_err());
+        assert!(db.save_category(&CategoryInput { id: None, name: "Y".into(), color: None, goal: None, goal_unit: "min".into() }).is_err(), "user types need a color");
+        assert!(db.save_category(&CategoryInput { id: None, name: "Y".into(), color: Some("#000000".into()), goal: Some(0.0), goal_unit: "min".into() }).is_err());
+        assert!(db.save_category(&CategoryInput { id: None, name: "Y".into(), color: Some("#000000".into()), goal: Some(2.0), goal_unit: "hours".into() }).is_err());
+        assert!(db.save_category(&CategoryInput { id: None, name: "em pé".into(), color: Some("#000000".into()), goal: None, goal_unit: "min".into() }).is_err());
         let bad = PresetInput { id: None, title: "Z".into(), minutes: 1.0, category_id: 9999, next_preset_id: None, favorite: true };
         assert!(db.save_preset(&bad).is_err());
+    }
+
+    #[test]
+    fn builtin_categories_can_be_renamed_recolored_and_given_a_goal() {
+        let db = Db::in_memory().unwrap();
+        let stand = db.category_id("stand").unwrap();
+        let input = |name: &str, color: Option<&str>| CategoryInput {
+            id: Some(stand),
+            name: name.into(),
+            color: color.map(Into::into),
+            goal: Some(120.0),
+            goal_unit: "min".into(),
+        };
+        db.save_category(&input("Em pé", None)).unwrap();
+        let c = db.category(stand).unwrap().unwrap();
+        assert_eq!((c.goal, c.renamed()), (Some(120.0), false));
+
+        db.save_category(&input("De pé", Some("#57e389"))).unwrap();
+        let c = db.category(stand).unwrap().unwrap();
+        assert_eq!((c.key.as_deref(), c.name.as_str(), c.color.as_deref()), (Some("stand"), "De pé", Some("#57e389")));
+        assert!(c.renamed());
+    }
+
+    #[test]
+    fn upgrades_a_version_1_database_in_place() {
+        let dir = std::env::temp_dir().join(format!("pivot-migrate-{}", std::process::id()));
+        let path = dir.join("pivot.db");
+        let _ = std::fs::remove_dir_all(&dir);
+        {
+            // What 0.3 created.
+            std::fs::create_dir_all(&dir).unwrap();
+            let conn = Connection::open(&path).unwrap();
+            let mut sql = format!("BEGIN;{SCHEMA}");
+            for (i, (key, name)) in BUILTIN_CATEGORIES.iter().enumerate() {
+                sql.push_str(&format!("INSERT INTO categories(key, name, sort_order, created_at) VALUES ('{key}', '{name}', {i}, 0);"));
+            }
+            sql.push_str(
+                "INSERT INTO sessions(title, category_id, source, started_at, planned_s, ends_at, ended_at, outcome) \
+                 VALUES ('Old', 1, 'app', 100, 60, 160, 160, 'done');",
+            );
+            sql.push_str("PRAGMA user_version = 1; COMMIT;");
+            conn.execute_batch(&sql).unwrap();
+        }
+        let db = Db::open(&path).unwrap();
+        assert_eq!(db.version().unwrap(), SCHEMA_VERSION);
+        let old = db.session(1).unwrap().unwrap();
+        assert_eq!((old.paused_at, old.paused_s, old.run_s(160.0)), (None, 0.0, 60.0));
+        assert_eq!(db.category(1).unwrap().unwrap().goal, None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

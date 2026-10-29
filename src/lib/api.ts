@@ -9,9 +9,23 @@ export interface Category {
   /** Set for built-in categories, null for the user's own. */
   key: BuiltinKey | null;
   name: string;
-  /** "#rrggbb" for user categories; built-ins take their color from the theme. */
+  /** "#rrggbb"; null (built-ins only) takes the color from the theme. */
   color: string | null;
   sort_order: number;
+  /** Daily goal in `goal_unit`; null = no goal. */
+  goal: number | null;
+  goal_unit: GoalUnit;
+}
+
+/** Minutes of timers per day, or times per day (timers + reminders done). */
+export type GoalUnit = "min" | "count";
+
+export interface CategoryInput {
+  id: number | null;
+  name: string;
+  color: string | null;
+  goal: number | null;
+  goal_unit: GoalUnit;
 }
 
 export interface Preset {
@@ -51,6 +65,10 @@ export interface Session {
   ended_at: number | null;
   outcome: "done" | "stopped" | "skipped" | null;
   snoozes: number;
+  /** Set while the timer is paused. */
+  paused_at: number | null;
+  /** Seconds spent paused (finished pauses only). */
+  paused_s: number;
 }
 
 export interface AppState {
@@ -59,6 +77,8 @@ export interface AppState {
   auto_paused_until: number;
   theme: "system" | "light" | "dark";
   lang: "pt" | "en";
+  /** Weekdays the daily goals apply to, "01234" = Mon–Fri. */
+  goal_days: string;
   alert_on_top: boolean;
   alert_on_top_needs_restart: boolean;
   now: number;
@@ -114,6 +134,8 @@ export const api = {
   startCustom: (title: string, minutes: number, categoryId: number) =>
     invoke("start_custom", { title, minutes, categoryId }),
   stop: () => invoke("stop_timer"),
+  pause: () => invoke("pause_timer"),
+  resume: () => invoke("resume_timer"),
   recurring: () => invoke<Recurring[]>("list_recurring"),
   saveRecurring: (input: RecurringInput) => invoke<number>("save_recurring", { input }),
   deleteRecurring: (id: number) => invoke("delete_recurring", { id }),
@@ -124,10 +146,10 @@ export const api = {
     invoke<{ summary: Summary; days: DayRow[] }>("history", { date, week }),
   alertInfo: (id: number) => invoke<AlertInfo>("alert_info", { id }),
   answer: (id: number, action: Answer, snoozeMin = 5) => invoke("answer", { id, action, snoozeMin }),
-  setSetting: (key: "theme" | "lang" | "alert_on_top", value: string) => invoke("set_setting", { key, value }),
+  setSetting: (key: "theme" | "lang" | "alert_on_top" | "goal_days", value: string) => invoke("set_setting", { key, value }),
   openSite: () => invoke("open_site"),
   categories: () => invoke<Category[]>("list_categories"),
-  saveCategory: (input: { id: number | null; name: string; color: string }) => invoke<number>("save_category", { input }),
+  saveCategory: (input: CategoryInput) => invoke<number>("save_category", { input }),
   deleteCategory: (id: number) => invoke("delete_category", { id }),
   soundInfo: () => invoke<SoundInfo>("sound_info"),
   setVolume: (volume: number) => invoke("set_volume", { volume }),

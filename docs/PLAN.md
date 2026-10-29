@@ -42,6 +42,7 @@ assets/               source SVGs for the app and tray icons
 - **Tray:**
   - On Linux and macOS the countdown sits next to the icon (`"Standing" 23:41`). On Windows the tray can't show text, so it goes in the tooltip.
   - Menu: current timer, favorites, Stop, the automatic-reminders switch, Open, "Developed by Lucas Mitchel Dev", Quit.
+- **Pausing:** `sessions.paused_at` is set while a timer is paused; resuming moves `ends_at` forward by the pause and adds it to `paused_s`. A paused timer never becomes due, and History counts only the time it ran (`Session::run_s`). A timer that already finished can't be paused.
 - **Flip-cube chaining:** `presets.next_preset_id` links timers (Standing → Sitting → Standing…). The alert's main button starts the next one.
 - **Reminders:**
   - Slots are `start + every`, up to `end`, on the chosen weekdays.
@@ -49,8 +50,10 @@ assets/               source SVGs for the app and tray icons
   - An unanswered reminder becomes "skipped" when the next slot fires.
   - There is a global switch and a one-hour pause.
 - **Storage:** SQLite at `dirs::data_dir()/pivot/pivot.db` (`PIVOT_DB` overrides it), with tables `categories`, `presets`, `recurring`, `sessions` and `settings`.
-  - The schema is versioned with `PRAGMA user_version` (currently 1). Future schema changes become new steps in `Db::migrate`.
+  - The schema is versioned with `PRAGMA user_version` (currently 2). Each schema change is a new step in `Db::migrate`, so existing databases upgrade in place (version 2 added goals and pausing).
 - **Types (categories):** six built-ins (Standing, Sitting, Break, Focus, Water, Other), plus the user's own, each with a name and a color.
+  - Built-ins keep their `key` and can't be deleted, but can be renamed and recolored. Their stored name is Portuguese and translated for display until it is renamed (`Category::renamed`); a null color takes the theme's.
+  - **Goals:** each type can have a daily goal, in minutes of timers (`goal_unit = 'min'`) or times per day (`'count'`: timers + reminders done). They apply on the weekdays in the `goal_days` setting (Mon–Fri by default). History → Week draws a small chart per type with a goal: bars for each day's total, a dashed line at the goal on goal days, and the week's total against the ideal one.
   - History tracks every type on its own: timers add up time, reminders count done/total.
   - "Switches" counts every change from one timer type to another.
   - Deleting a user type moves its timers, reminders and history to "Other".

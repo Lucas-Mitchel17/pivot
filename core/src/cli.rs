@@ -19,6 +19,8 @@ pub enum Command {
     Start(String),
     Custom { minutes: f64, title: Option<String> },
     Stop,
+    Pause,
+    Resume,
     Status,
     Log { week: bool },
     List,
@@ -27,7 +29,7 @@ pub enum Command {
 impl Command {
     /// Commands the running app has to carry out.
     pub fn mutates(&self) -> bool {
-        matches!(self, Command::Start(_) | Command::Custom { .. } | Command::Stop)
+        matches!(self, Command::Start(_) | Command::Custom { .. } | Command::Stop | Command::Pause | Command::Resume)
     }
 }
 
@@ -40,6 +42,8 @@ pub fn parse(args: &[String]) -> Command {
         "help" | "-h" | "--help" => Command::Help,
         "start" if !rest.trim().is_empty() => Command::Start(rest.trim().to_string()),
         "stop" => Command::Stop,
+        "pause" => Command::Pause,
+        "resume" => Command::Resume,
         "status" => Command::Status,
         "list" => Command::List,
         "log" => Command::Log { week: args[1..].iter().any(|a| matches!(a.as_str(), "--semana" | "--week" | "-w")) },
@@ -106,8 +110,19 @@ pub fn describe(db: &Db, cmd: &Command, lang: Lang, now: f64) -> Result<(i32, St
             Some(s) => (0, format!("■ {} {}", display_title(lang, &s.title), tr(lang, "cli.stopped"))),
             None => (0, tr(lang, "cli.none").to_string()),
         },
+        Command::Pause | Command::Resume => match db.open_timer()? {
+            Some(s) => {
+                let key = if *cmd == Command::Pause { "cli.paused" } else { "cli.resumed" };
+                (0, format!("{} {} · {} {}", display_title(lang, &s.title), tr(lang, key), tr(lang, "cli.left"), fmt_left(s.left_s(now))))
+            }
+            None => (0, tr(lang, "cli.none").to_string()),
+        },
         Command::Status => match db.open_timer()? {
             None => (0, tr(lang, "cli.none").to_string()),
+            Some(s) if s.paused_at.is_some() => (
+                0,
+                format!("{} · {} · {} {}", display_title(lang, &s.title), tr(lang, "cli.paused"), tr(lang, "cli.left"), fmt_left(s.left_s(now))),
+            ),
             Some(s) if s.ends_at <= now => (0, format!("{} · {}", display_title(lang, &s.title), tr(lang, "cli.due"))),
             Some(s) => (
                 0,
@@ -152,6 +167,12 @@ pub fn apply(engine: &mut Engine, cmd: &Command, now: f64) -> Result<()> {
         }
         Command::Stop => {
             engine.stop(now)?;
+        }
+        Command::Pause => {
+            engine.pause(now)?;
+        }
+        Command::Resume => {
+            engine.resume(now)?;
         }
         _ => {}
     }
@@ -241,6 +262,9 @@ mod tests {
         assert_eq!(parse(&args("90s")), Command::Custom { minutes: 1.5, title: None });
         assert_eq!(parse(&args("log --semana")), Command::Log { week: true });
         assert_eq!(parse(&args("start")), Command::Help);
+        assert_eq!(parse(&args("pause")), Command::Pause);
+        assert_eq!(parse(&args("resume")), Command::Resume);
+        assert!(Command::Pause.mutates() && Command::Resume.mutates());
         assert_eq!(parse(&args("bogus")), Command::Help);
         assert!(parse(&args("stop")).mutates());
         assert!(!parse(&args("status")).mutates());

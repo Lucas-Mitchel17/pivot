@@ -3,10 +3,12 @@
 A posture timer for switching between standing, sitting and taking breaks while you work — the desk "flip cube" timer, on your computer. Runs on Linux, Windows and macOS.
 
 - Tray / top bar icon with a countdown and your favorite timers (`15m — Standing`, `10m — Break`…)
+- Pause a timer and resume it where it was
 - An alert that stays above your other windows until you answer it (optional), with sound; one click starts the next timer in the sequence
 - Recurring reminders (e.g. "Drink water" every hour, 9:00–18:00, Monday to Friday)
 - Day and week history: time per type, switches between types, reminders done
-- Your own types (e.g. "Active break"), each with its own color in the history
+- Daily goals per type (e.g. "Standing 2h a day", "Water 8 times a day") and a weekly chart of the ideal week vs. how it went
+- Your own types (e.g. "Active break"), each with its own color in the history; the built-in ones can be renamed and recolored
 - Alert volume with a test button, or your own sound (up to 8 seconds)
 - Updates from inside the app (Settings → Updates)
 - Light and dark themes, built on the Lucas Mitchel Dev design system
@@ -75,6 +77,7 @@ pivot                     open the window
 pivot start em-pe         start a saved timer (by name or slug)
 pivot 30 "Standing"       one-off timer (30, 1:30, 90s, 1h30)
 pivot stop                stop the timer
+pivot pause | resume      pause or resume the timer
 pivot status              show the current timer
 pivot list                list saved timers
 pivot log [--week]        today's (or this week's) summary

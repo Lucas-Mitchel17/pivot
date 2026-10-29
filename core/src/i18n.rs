@@ -17,6 +17,9 @@ pub fn tr(lang: Lang, key: &str) -> &'static str {
     let (pt, en) = match key {
         "tray.favorites" => ("Favoritos", "Favorites"),
         "tray.stop" => ("Parar timer atual", "Stop current timer"),
+        "tray.pause" => ("Pausar timer", "Pause timer"),
+        "tray.resume" => ("Continuar timer", "Resume timer"),
+        "tray.paused" => ("pausado", "paused"),
         "tray.auto" => ("Lembretes automáticos", "Automatic reminders"),
         "tray.open" => ("Abrir Pivot…", "Open Pivot…"),
         "tray.credit" => ("Desenvolvido por Lucas Mitchel Dev", "Developed by Lucas Mitchel Dev"),
@@ -28,6 +31,8 @@ pub fn tr(lang: Lang, key: &str) -> &'static str {
         "cli.left" => ("faltam", "left"),
         "cli.due" => ("acabou, esperando resposta", "finished, waiting for an answer"),
         "cli.stopped" => ("parado", "stopped"),
+        "cli.paused" => ("pausado", "paused"),
+        "cli.resumed" => ("continuando", "resumed"),
         "cli.unknown" => ("Não achei o timer", "No timer called"),
         "cli.favorites" => ("Timers salvos", "Saved timers"),
         "cli.not_running" => (
@@ -54,6 +59,7 @@ pub fn tr(lang: Lang, key: &str) -> &'static str {
              \x20 pivot start <timer>       inicia um timer salvo (ex.: em-pe)\n\
              \x20 pivot <tempo> [título]    timer avulso (30, 30m, 90s, 1h30)\n\
              \x20 pivot stop                para o timer\n\
+             \x20 pivot pause | resume      pausa ou continua o timer\n\
              \x20 pivot status              mostra o timer atual\n\
              \x20 pivot log [--semana]      resumo de hoje (ou da semana)\n\
              \x20 pivot list                lista os timers salvos",
@@ -62,6 +68,7 @@ pub fn tr(lang: Lang, key: &str) -> &'static str {
              \x20 pivot start <timer>       start a saved timer (e.g. em-pe)\n\
              \x20 pivot <time> [title]      one-off timer (30, 30m, 90s, 1h30)\n\
              \x20 pivot stop                stop the timer\n\
+             \x20 pivot pause | resume      pause or resume the timer\n\
              \x20 pivot status              show the current timer\n\
              \x20 pivot log [--week]        today's summary (or the week's)\n\
              \x20 pivot list                list saved timers",
@@ -89,7 +96,7 @@ pub fn display_title(lang: Lang, title: &str) -> String {
 
 /// Name to show for a category: built-ins are translated, user ones as typed.
 pub fn category_name(lang: Lang, c: &crate::db::Category) -> String {
-    let Some(key) = c.key.as_deref() else { return c.name.clone() };
+    let Some(key) = c.key.as_deref().filter(|_| !c.renamed()) else { return c.name.clone() };
     let (pt, en) = match key {
         "stand" => ("Em pé", "Standing"),
         "sit" => ("Sentado", "Sitting"),

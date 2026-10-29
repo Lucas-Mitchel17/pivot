@@ -108,6 +108,8 @@ pub fn run(cmd: Command) {
             commands::start_preset,
             commands::start_custom,
             commands::stop_timer,
+            commands::pause_timer,
+            commands::resume_timer,
             commands::list_recurring,
             commands::save_recurring,
             commands::delete_recurring,
