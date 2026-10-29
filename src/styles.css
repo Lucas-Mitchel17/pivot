@@ -114,14 +114,6 @@ button {
   font-size: 1.0625rem;
   color: var(--text-primary);
 }
-.topbar-end {
-  display: flex;
-  justify-content: flex-end;
-}
-.add-btn {
-  height: 2.25rem;
-  padding: 0 var(--space-4) 0 var(--space-3);
-}
 .tabs {
   display: flex;
   gap: var(--space-1);
@@ -410,6 +402,17 @@ h2 {
 .btn.danger {
   border-color: var(--danger);
   color: var(--danger);
+}
+.btn.sm {
+  height: 2rem;
+  padding: 0 var(--space-3) 0 var(--space-2);
+  gap: var(--space-1);
+  font-size: 0.875rem;
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  background: var(--action-secondary);
 }
 .btn.big {
   height: 3rem;
@@ -713,13 +716,8 @@ h2 {
     flex-shrink: 0;
     font-size: 0.875rem;
   }
-  .brand-name,
-  .add-label {
+  .brand-name {
     display: none;
-  }
-  .add-btn {
-    width: 2.25rem;
-    padding: 0;
   }
 }
 @media (max-width: 520px) {

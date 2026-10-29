@@ -3,13 +3,12 @@ import "../styles.css";
 import { api, onChanged, type AppState } from "../lib/api";
 import { h, icon, replace } from "../lib/dom";
 import { t } from "../lib/i18n";
-import { ICONS } from "../lib/icons";
 import { PIVOT_MARK } from "../lib/logo";
 import { applySettings } from "../lib/theme";
-import { newReminder, renderAutomatic } from "./automatic";
-import { newTimer, renderFavorites } from "./favorites";
+import { renderAutomatic } from "./automatic";
+import { renderFavorites } from "./favorites";
 import { renderHistory } from "./history";
-import { newType, renderSettings } from "./settings";
+import { renderSettings } from "./settings";
 import { credit, tickClocks } from "./ui";
 import { initUpdates, onUpdateStatus, updateStatus } from "./updates";
 
@@ -38,13 +37,6 @@ async function render() {
     ["history", t("tab.history")],
     ["settings", t("tab.settings")],
   ];
-  const add: Partial<Record<Tab, [string, () => void]>> = {
-    favorites: [t("add.timer"), () => newTimer(render)],
-    automatic: [t("add.reminder"), () => newReminder(render)],
-    settings: [t("add.type"), () => newType(render)],
-  };
-  const onAdd = add[tab];
-
   const topbar = h(
     "header",
     { class: "topbar" },
@@ -72,18 +64,7 @@ async function render() {
         ),
       ),
     ),
-    h(
-      "div",
-      { class: "topbar-end" },
-      onAdd
-        ? h(
-            "button",
-            { class: "btn primary add-btn", type: "button", "aria-label": `${t("add")} ${onAdd[0]}`, onclick: onAdd[1] },
-            icon(ICONS.plus, "icon inherit"),
-            h("span", { class: "add-label" }, onAdd[0]),
-          )
-        : null,
-    ),
+    h("span"),
   );
 
   const content = h("main", { class: "content" }, page);

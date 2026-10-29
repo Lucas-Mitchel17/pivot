@@ -3,7 +3,7 @@ import { api, type AppState, type Category, type Preset } from "../lib/api";
 import { h, icon } from "../lib/dom";
 import { catName, fmtMinutes, minutesField, parseMinutesField, t, title } from "../lib/i18n";
 import { ICONS } from "../lib/icons";
-import { categorySelect, confirmDelete, minutesInput, nowCard } from "./ui";
+import { categorySelect, confirmDelete, formHead, minutesInput, nowCard } from "./ui";
 
 interface Draft {
   id: number | null;
@@ -212,6 +212,11 @@ export function renderFavorites(state: AppState, presets: Preset[], categories: 
         ? h("ul", { class: "card list" }, rows)
         : h("p", { class: "card empty" }, t("fav.empty")),
     ),
-    h("section", { class: "section" }, h("h2", {}, t(draft.id !== null ? "fav.edit" : "fav.new")), form),
+    h(
+      "section",
+      { class: "section" },
+      formHead(t(draft.id !== null ? "fav.edit" : "fav.new"), t("add.timer"), draft.id !== null, () => newTimer(rerender)),
+      form,
+    ),
   );
 }

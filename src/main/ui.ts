@@ -25,6 +25,21 @@ export function segmented<T extends string>(label: string, options: [T, string][
   );
 }
 
+/** Form section heading with a small "+ New" button at the end; enabled only while editing an item. */
+export function formHead(heading: string, label: string, editing: boolean, onNew: () => void) {
+  return h(
+    "div",
+    { class: "section-head" },
+    h("h2", {}, heading),
+    h(
+      "button",
+      { class: "btn sm", type: "button", disabled: !editing, "aria-label": `${t("add")} ${label}`, onclick: onNew },
+      icon(ICONS.plus, "icon inherit"),
+      label,
+    ),
+  );
+}
+
 export function credit() {
   return h(
     "button",

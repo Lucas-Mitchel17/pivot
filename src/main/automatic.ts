@@ -3,7 +3,7 @@ import { api, type AppState, type Category, type Recurring } from "../lib/api";
 import { h, icon } from "../lib/dom";
 import { catColor, fmtDays, fmtMinutes, hhmm, t, title, weekdayLetters } from "../lib/i18n";
 import { ICONS } from "../lib/icons";
-import { categorySelect, confirmDelete, switchButton } from "./ui";
+import { categorySelect, confirmDelete, formHead, switchButton } from "./ui";
 
 interface Draft {
   id: number | null;
@@ -293,6 +293,11 @@ export function renderAutomatic(state: AppState, list: Recurring[], categories: 
       h("h2", {}, t("auto.list")),
       list.length ? h("ul", { class: "card list" }, rows) : h("p", { class: "card empty" }, t("auto.empty")),
     ),
-    h("section", { class: "section" }, h("h2", {}, t(draft.id !== null ? "auto.edit" : "auto.new")), form),
+    h(
+      "section",
+      { class: "section" },
+      formHead(t(draft.id !== null ? "auto.edit" : "auto.new"), t("add.reminder"), draft.id !== null, () => newReminder(rerender)),
+      form,
+    ),
   );
 }

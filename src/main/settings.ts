@@ -4,7 +4,7 @@ import { api, type AppState, type BuiltinKey, type Category, type GoalUnit, type
 import { h } from "../lib/dom";
 import { BUILTIN_NAMES, catColor, catName, fmtGoal, t, weekdayLetters, type Lang } from "../lib/i18n";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { confirmDelete, confirmDialog, segmented, switchButton } from "./ui";
+import { confirmDelete, confirmDialog, formHead, segmented, switchButton } from "./ui";
 import { canSelfUpdate, checkForUpdates, currentVersion, installUpdate, updateStatus } from "./updates";
 
 /** Colors for user types: mid-light hues that read on both light and dark surfaces. */
@@ -420,7 +420,12 @@ function types(state: AppState, categories: Category[], rerender: () => void) {
       h("ul", { class: "card list" }, rows),
       goalDays(state),
     ),
-    h("section", { class: "section" }, h("h2", {}, t(typeDraft.id !== null ? "set.types.edit" : "set.types.new")), form),
+    h(
+      "section",
+      { class: "section" },
+      formHead(t(typeDraft.id !== null ? "set.types.edit" : "set.types.new"), t("add.type"), typeDraft.id !== null, () => newType(rerender)),
+      form,
+    ),
   ];
 }
 
