@@ -48,8 +48,13 @@ fn main() {
 /// `PIVOT_FORCED_X11` marks a backend we chose, so a restart after turning the option
 /// off (which inherits this process's environment) can undo it; a GDK_BACKEND the user
 /// set themselves is left alone.
+///
+/// WebKitGTK's DMA-BUF renderer stops repainting windows under XWayland on some
+/// drivers (NVIDIA), so the app looked frozen after an alert; it is turned off
+/// together with the X11 backend.
 fn keep_alerts_on_top_on_wayland() {
     const MARK: &str = "PIVOT_FORCED_X11";
+    const DMABUF: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
     let ours = std::env::var_os(MARK).is_some();
     if !pivot_lib::is_wayland() || (std::env::var_os("GDK_BACKEND").is_some() && !ours) {
         return;
@@ -59,8 +64,10 @@ fn keep_alerts_on_top_on_wayland() {
     if on_top {
         std::env::set_var("GDK_BACKEND", "x11");
         std::env::set_var(MARK, "1");
+        std::env::set_var(DMABUF, "1");
     } else if ours {
         std::env::remove_var("GDK_BACKEND");
         std::env::remove_var(MARK);
+        std::env::remove_var(DMABUF);
     }
 }
