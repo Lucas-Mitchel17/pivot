@@ -115,6 +115,7 @@ button {
   color: var(--text-primary);
 }
 .tabs {
+  position: relative;
   display: flex;
   gap: var(--space-1);
   font-family: var(--font-display);
@@ -130,9 +131,21 @@ button {
   font-size: var(--fs-body);
   cursor: pointer;
 }
+.tab {
+  position: relative;
+  z-index: 1;
+}
 .tab[aria-selected="true"] {
-  background: var(--surface-3);
   color: var(--text-highlight);
+}
+/* Highlight behind the selected tab; src/lib/motion.ts places and slides it. */
+.tab-pill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-3);
 }
 .tab:hover:not([aria-selected="true"]) {
   color: var(--text-primary);
@@ -752,6 +765,7 @@ h2 {
   text-align: center;
 }
 .alert-mark {
+  position: relative;
   width: 4.5rem;
   height: 4.5rem;
   border-radius: var(--radius-lg);
@@ -998,7 +1012,9 @@ dialog.confirm p {
   font-weight: 600;
 }
 .goal-axis .met::after {
-  content: " ✓";
+  content: "✓";
+  display: inline-block;
+  margin-left: 0.25em;
 }
 .goal-input {
   display: flex;
@@ -1007,4 +1023,134 @@ dialog.confirm p {
 }
 .goal-input .input {
   width: 8rem;
+}
+
+/* ---------- motion ---------- */
+.brand-mark .inner,
+.brand-mark .arc,
+.splash-cube .inner,
+.splash-cube .arc {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* Opening animation (src/main/splash.ts) */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  cursor: default;
+}
+.splash-veil {
+  position: absolute;
+  inset: 0;
+  background: var(--surface-1);
+}
+.splash-lockup {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  transform-origin: 0 50%;
+}
+.splash-cube {
+  position: relative;
+  z-index: 1;
+  opacity: 0;
+}
+.splash-cube,
+.splash-cube svg {
+  display: block;
+  width: 72px;
+  height: 72px;
+}
+.splash-word {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 46px;
+  line-height: 1;
+  color: var(--text-primary);
+  clip-path: inset(0 0 0 100%);
+}
+.splashing .topbar .brand {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .now.enter {
+    animation: now-in 0.38s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  }
+  .alert {
+    animation: alert-in 0.32s cubic-bezier(0.3, 1.4, 0.6, 1) both;
+  }
+  .alert-mark {
+    animation: wobble 0.6s ease-out 0.3s both;
+  }
+  .alert-mark::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 2px solid var(--brand-mark-from);
+    opacity: 0;
+    animation: pulse 0.7s ease-out 0.3s 2;
+  }
+  .grow .goal-bar {
+    transform-origin: bottom;
+    animation: bar-grow 0.52s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+    animation-delay: calc(var(--i, 0) * 60ms);
+  }
+  .grow .goal-axis .met::after {
+    animation: tick-pop 0.36s ease-out 0.65s both;
+  }
+}
+@keyframes now-in {
+  from {
+    opacity: 0;
+    transform: translateY(-24px);
+  }
+}
+@keyframes alert-in {
+  from {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+}
+@keyframes wobble {
+  20% {
+    transform: rotate(-14deg);
+  }
+  45% {
+    transform: rotate(10deg);
+  }
+  70% {
+    transform: rotate(-6deg);
+  }
+}
+@keyframes pulse {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+}
+@keyframes bar-grow {
+  from {
+    transform: scaleY(0);
+  }
+}
+@keyframes tick-pop {
+  from {
+    opacity: 0;
+    transform: scale(0);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.3);
+  }
 }

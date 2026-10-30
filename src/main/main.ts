@@ -4,11 +4,13 @@ import { api, onChanged, type AppState } from "../lib/api";
 import { h, icon, replace } from "../lib/dom";
 import { t } from "../lib/i18n";
 import { PIVOT_MARK } from "../lib/logo";
+import { pivotTurn, tabPill } from "../lib/motion";
 import { applySettings } from "../lib/theme";
 import { renderAutomatic } from "./automatic";
 import { renderFavorites } from "./favorites";
 import { renderHistory } from "./history";
 import { renderSettings } from "./settings";
+import { initSplash } from "./splash";
 import { credit, tickClocks } from "./ui";
 import { initUpdates, onUpdateStatus, updateStatus } from "./updates";
 
@@ -40,10 +42,16 @@ async function render() {
   const topbar = h(
     "header",
     { class: "topbar" },
-    h("div", { class: "brand" }, icon(PIVOT_MARK, "brand-mark"), h("span", { class: "brand-name" }, "Pivot")),
+    h(
+      "div",
+      { class: "brand", onmouseenter: (e: Event) => pivotTurn(e.currentTarget as Element) },
+      icon(PIVOT_MARK, "brand-mark"),
+      h("span", { class: "brand-name" }, "Pivot"),
+    ),
     h(
       "nav",
       { class: "tabs", role: "tablist", "aria-label": t("sections") },
+      h("span", { class: "tab-pill", "aria-hidden": "true" }),
       tabs.map(([id, label]) =>
         h(
           "button",
@@ -70,6 +78,7 @@ async function render() {
   const content = h("main", { class: "content" }, page);
   replace(root, topbar, content, h("footer", { class: "footer" }, credit()));
   content.scrollTop = scroll;
+  tabPill(topbar.querySelector<HTMLElement>(".tabs")!);
   if (focusedId) document.getElementById(focusedId)?.focus();
 }
 
@@ -77,5 +86,5 @@ document.addEventListener("pivot:rerender", render);
 onChanged(render);
 onUpdateStatus(render);
 setInterval(tickClocks, 1000);
-render();
+initSplash(render());
 initUpdates();

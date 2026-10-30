@@ -19,6 +19,10 @@ pub struct AppState {
 }
 
 pub const CHANGED: &str = "pivot://changed";
+/// Sent to the main window when it is shown again after being closed (not just minimized).
+pub const OPENED: &str = "pivot://opened";
+/// Sent to the main window when closing it hides it in the tray.
+pub const HIDDEN: &str = "pivot://hidden";
 
 /// Tell every window and the tray that something changed.
 pub fn changed(app: &AppHandle) {
@@ -45,9 +49,14 @@ pub fn sound_settings(app: &AppHandle) -> (u8, Option<std::path::PathBuf>) {
 
 pub fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
+        // A closed (hidden) window plays the opening animation; a minimized one just comes back.
+        let was_hidden = !w.is_visible().unwrap_or(true);
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
+        if was_hidden {
+            let _ = app.emit_to("main", OPENED, ());
+        }
     }
 }
 
@@ -139,6 +148,7 @@ pub fn run(cmd: Command) {
                 if window.label() == "main" {
                     api.prevent_close();
                     let _ = window.hide();
+                    let _ = window.emit_to("main", HIDDEN, ());
                 }
             }
         })

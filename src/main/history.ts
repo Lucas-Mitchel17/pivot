@@ -2,6 +2,7 @@
 import { api, type Category, type CategoryStat, type DayRow, type Session, type Summary } from "../lib/api";
 import { h, icon } from "../lib/dom";
 import { catColor, catName, dayLabel, fmtDuration, fmtGoal, hhmm, out, src, t, title, weekdayNames } from "../lib/i18n";
+import { countUp, reducedMotion } from "../lib/motion";
 import { ICONS } from "../lib/icons";
 import { segmented } from "./ui";
 
@@ -109,6 +110,9 @@ function goals(days: DayRow[], categories: Category[], goalDays: string) {
   const withGoal = categories.filter((c) => c.goal !== null);
   if (!withGoal.length) return h("p", { class: "card empty" }, t("hist.goals.none"));
   const names = weekdayNames();
+  // Bars grow in when the week is first shown, not on every refresh of the same week.
+  const key = days[0]?.date ?? "";
+  const grow = !reducedMotion() && document.querySelector<HTMLElement>(".goal-charts")?.dataset.week !== key;
   const charts = withGoal.map((cat) => {
     const goal = cat.goal!;
     const values = days.map((d) => goalValue(d.categories.find((c) => c.category_id === cat.id), cat));
@@ -130,7 +134,7 @@ function goals(days: DayRow[], categories: Category[], goalDays: string) {
           { class: "goal-total" },
           h("strong", { class: "mono" }, fmtGoalValue(actual, cat)),
           ` ${t("hist.goals.of", { ideal: fmtGoalValue(ideal, cat) })}`,
-          h("span", { class: `goal-pct${pct >= 100 ? " met" : ""}` }, `${pct}%`),
+          countUpIf(grow, h("span", { class: `goal-pct${pct >= 100 ? " met" : ""}` }, `${pct}%`), pct),
         ),
       ),
       h(
@@ -142,7 +146,9 @@ function goals(days: DayRow[], categories: Category[], goalDays: string) {
             "div",
             { class: "goal-day", title: tip, "aria-label": tip, role: "img" },
             isGoalDay[i] ? h("span", { class: "goal-line", style: `bottom:${y(goal)}` }) : null,
-            values[i] > 0 ? h("span", { class: "goal-bar", style: `height:${y(values[i])};background:${catColor(cat)}` }) : null,
+            values[i] > 0
+              ? h("span", { class: "goal-bar", style: `height:${y(values[i])};background:${catColor(cat)};--i:${i}` })
+              : null,
           );
         }),
       ),
@@ -153,7 +159,17 @@ function goals(days: DayRow[], categories: Category[], goalDays: string) {
       ),
     );
   });
-  return h("div", { class: "goal-charts" }, h("p", { class: "hint" }, t("hist.goals.legend")), charts);
+  return h(
+    "div",
+    { class: `goal-charts${grow ? " grow" : ""}`, "data-week": key },
+    h("p", { class: "hint" }, t("hist.goals.legend")),
+    charts,
+  );
+}
+
+function countUpIf(grow: boolean, el: HTMLElement, to: number) {
+  if (grow && to > 0) countUp(el, to, "%");
+  return el;
 }
 
 function dayRows(days: DayRow[], cats: Cats) {

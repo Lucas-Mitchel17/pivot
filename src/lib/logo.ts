@@ -26,11 +26,13 @@ export const LOGO_LOCKUP = `<svg viewBox="0 0 288 170" width="34" height="20" ro
 </svg>`;
 
 // Pivot app mark (assets/app-icon.svg). Fixed colors so it matches the dock icon in both modes.
+// ".inner" and ".arc" are the parts that turn (src/lib/motion.ts); the invisible circle centers
+// the arc group's box on the mark so it turns around the middle.
 export const PIVOT_MARK = `<svg viewBox="64 64 896 896" width="26" height="26" aria-hidden="true">
 <defs><linearGradient id="pivot-mark-grad" x1="900" y1="80" x2="120" y2="960" gradientUnits="userSpaceOnUse">
 <stop offset="0" stop-color="#7de3ff"/><stop offset="1" stop-color="#3f6bff"/></linearGradient></defs>
 <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#pivot-mark-grad)"/>
-<rect x="272" y="272" width="480" height="480" rx="96" transform="rotate(15 512 512)" fill="none" stroke="#05070e" stroke-width="64" stroke-linejoin="round"/>
-<path d="M760 168a330 330 0 0 1 104 156" fill="none" stroke="#05070e" stroke-width="52" stroke-linecap="round"/>
+<g class="inner"><rect x="272" y="272" width="480" height="480" rx="96" transform="rotate(15 512 512)" fill="none" stroke="#05070e" stroke-width="64" stroke-linejoin="round"/></g>
+<g class="arc"><circle cx="512" cy="512" r="420" fill="none"/><path d="M760 168a330 330 0 0 1 104 156" fill="none" stroke="#05070e" stroke-width="52" stroke-linecap="round"/></g>
 <circle cx="512" cy="512" r="64" fill="#05070e"/>
 </svg>`;

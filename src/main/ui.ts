@@ -52,9 +52,15 @@ export function credit() {
   );
 }
 
+// Session shown in the last "running now" card: undefined before the first render, so a timer
+// that was already running when the window opened doesn't slide in.
+let shownSession: number | null | undefined;
+
 /** "Running now" card; the clock updates through `tickClocks`. */
 export function nowCard(state: AppState) {
   const a = state.active;
+  const entering = shownSession !== undefined && shownSession !== (a?.session.id ?? null);
+  shownSession = a?.session.id ?? null;
   if (!a) return null;
   const s = a.session;
   const paused = s.paused_at !== null;
@@ -64,7 +70,7 @@ export function nowCard(state: AppState) {
   const due = !paused && s.ends_at <= state.now;
   return h(
     "section",
-    { class: "card now", "aria-label": t("now.running") },
+    { class: `card now${entering ? " enter" : ""}`, "aria-label": t("now.running") },
     h(
       "div",
       { class: "now-main" },
