@@ -372,11 +372,18 @@ pub fn clear_history(app: AppHandle, state: State<AppState>, older_than_days: Op
 }
 
 /// How Pivot was installed, which decides whether it can update itself:
-/// "appimage" and "app" (Windows/macOS) can; "package" (.deb/.rpm) goes through the download page.
+/// "appimage" and "app" (Windows/macOS) replace themselves; "package" (.deb/.rpm) installs the new
+/// package with the user's password (pkexec); "snap" is updated by the store.
 #[tauri::command]
 pub fn install_kind() -> &'static str {
     if cfg!(target_os = "linux") {
-        if std::env::var_os("APPIMAGE").is_some() { "appimage" } else { "package" }
+        if std::env::var_os("SNAP").is_some() {
+            "snap"
+        } else if std::env::var_os("APPIMAGE").is_some() {
+            "appimage"
+        } else {
+            "package"
+        }
     } else {
         "app"
     }

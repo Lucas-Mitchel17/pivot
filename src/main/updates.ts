@@ -1,6 +1,7 @@
 // In-app updates through the Tauri updater: checks GitHub's latest release
-// (latest.json), then downloads, installs and restarts. .deb/.rpm installs
-// can't replace themselves, so they get a link to the download page instead.
+// (latest.json), then downloads, installs and restarts. A .deb/.rpm install
+// asks for the user's password (pkexec) to install the new package; if that
+// fails, it gets a link to the download page. Snaps are updated by the store.
 import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
@@ -12,12 +13,14 @@ export type UpdateStatus =
   | { kind: "latest" }
   | { kind: "available"; version: string; notes: string }
   | { kind: "downloading"; pct: number }
-  | { kind: "error" };
+  | { kind: "installing" }
+  | { kind: "error" }
+  | { kind: "installError" };
 
 let status: UpdateStatus = { kind: "idle" };
 let pending: Update | null = null;
 let version = "";
-let installKind: "appimage" | "package" | "app" = "app";
+let installKind: "appimage" | "package" | "snap" | "app" = "app";
 const listeners = new Set<() => void>();
 
 const set = (s: UpdateStatus) => {
@@ -27,12 +30,16 @@ const set = (s: UpdateStatus) => {
 
 export const updateStatus = () => status;
 export const currentVersion = () => version;
-export const canSelfUpdate = () => installKind !== "package";
+/** The App Center (snap store) updates the snap; the app doesn't check on its own. */
+export const storeUpdates = () => installKind === "snap";
+/** .deb/.rpm installs need the user's password to install an update. */
+export const needsPassword = () => installKind === "package";
 export const onUpdateStatus = (fn: () => void) => listeners.add(fn);
 
 export async function initUpdates() {
   version = await getVersion().catch(() => "");
   installKind = await api.installKind().catch(() => "app" as const);
+  if (storeUpdates()) return;
   // Quiet check at startup; errors (offline, no release yet) only show on a manual check.
   await checkForUpdates(true);
 }
@@ -49,7 +56,6 @@ export async function checkForUpdates(quiet = false) {
 }
 
 export async function installUpdate() {
-  if (!canSelfUpdate()) return api.openReleases();
   if (!pending) return;
   let total = 0;
   let received = 0;
@@ -61,9 +67,10 @@ export async function installUpdate() {
         received += event.data.chunkLength;
         set({ kind: "downloading", pct: total ? Math.round((100 * received) / total) : 0 });
       }
+      if (event.event === "Finished") set({ kind: "installing" });
     });
     await relaunch();
   } catch {
-    set({ kind: "error" });
+    set({ kind: "installError" });
   }
 }

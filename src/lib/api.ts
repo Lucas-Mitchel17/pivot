@@ -158,7 +158,7 @@ export const api = {
     invoke<number>("set_custom_sound", { name, bytes: Array.from(bytes) }),
   resetSound: () => invoke("reset_sound"),
   clearHistory: (olderThanDays: number | null) => invoke<number>("clear_history", { olderThanDays }),
-  installKind: () => invoke<"appimage" | "package" | "app">("install_kind"),
+  installKind: () => invoke<"appimage" | "package" | "snap" | "app">("install_kind"),
   openReleases: () => invoke("open_releases"),
 };
 

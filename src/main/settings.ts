@@ -5,7 +5,7 @@ import { h } from "../lib/dom";
 import { BUILTIN_NAMES, catColor, catName, fmtGoal, t, weekdayLetters, type Lang } from "../lib/i18n";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { confirmDelete, confirmDialog, formHead, segmented, switchButton } from "./ui";
-import { canSelfUpdate, checkForUpdates, currentVersion, installUpdate, updateStatus } from "./updates";
+import { checkForUpdates, currentVersion, installUpdate, needsPassword, storeUpdates, updateStatus } from "./updates";
 
 /** Colors for user types: mid-light hues that read on both light and dark surfaces. */
 export const TYPE_COLORS = ["#f5c451", "#57e389", "#ff8a8a", "#c061cb", "#ffa348", "#5bc8af", "#dc8add", "#99c1f1"];
@@ -496,16 +496,27 @@ function history(rerender: () => void) {
 function updates() {
   const s = updateStatus();
   let line: Node | string = "";
-  let action: HTMLElement | null = h(
-    "button",
-    { class: "btn", type: "button", disabled: s.kind === "checking", onclick: () => checkForUpdates() },
-    t(s.kind === "checking" ? "set.updates.checking" : "set.updates.check"),
-  );
+  let action: HTMLElement | null = storeUpdates()
+    ? null
+    : h(
+        "button",
+        { class: "btn", type: "button", disabled: s.kind === "checking", onclick: () => checkForUpdates() },
+        t(s.kind === "checking" ? "set.updates.checking" : "set.updates.check"),
+      );
+  if (storeUpdates()) line = h("span", { class: "row-sub" }, t("set.updates.store"));
   if (s.kind === "latest") line = h("span", { class: "ok" }, t("set.updates.latest"));
   if (s.kind === "error") line = h("span", { class: "error" }, t("set.updates.error"));
-  if (s.kind === "downloading") {
-    line = h("span", { class: "row-sub" }, t("set.updates.downloading", { pct: s.pct }));
+  if (s.kind === "downloading" || s.kind === "installing") {
+    line = h(
+      "span",
+      { class: "row-sub" },
+      s.kind === "downloading" ? t("set.updates.downloading", { pct: s.pct }) : t("set.updates.installing"),
+    );
     action = null;
+  }
+  if (s.kind === "installError") {
+    line = h("span", { class: "error" }, t("set.updates.installError"));
+    action = h("button", { class: "btn primary", type: "button", onclick: () => api.openReleases() }, t("set.updates.download"));
   }
   if (s.kind === "available") {
     line = h(
@@ -513,13 +524,9 @@ function updates() {
       { class: "row-main", style: "cursor:default" },
       h("span", { class: "row-title" }, t("set.updates.available", { version: s.version })),
       s.notes ? h("span", { class: "row-sub" }, s.notes) : null,
-      canSelfUpdate() ? null : h("span", { class: "row-sub" }, t("set.updates.packageHint")),
+      needsPassword() ? h("span", { class: "row-sub" }, t("set.updates.packageHint")) : null,
     );
-    action = h(
-      "button",
-      { class: "btn primary", type: "button", onclick: () => installUpdate() },
-      t(canSelfUpdate() ? "set.updates.install" : "set.updates.download"),
-    );
+    action = h("button", { class: "btn primary", type: "button", onclick: () => installUpdate() }, t("set.updates.install"));
   }
   return h(
     "section",

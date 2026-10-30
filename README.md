@@ -54,12 +54,13 @@ Pivot checks GitHub for a new release when it starts; **Settings → Updates** s
 "Check for updates" button.
 
 - **Windows, macOS and AppImage** update themselves: "Update and restart".
-- **.deb / .rpm** are managed by your package manager, so the button opens the download page;
-  install the new file the same way as the first one.
+- **.deb / .rpm** update the same way from version 0.5.1 on: the system asks for your password to
+  install the new package. If that fails, the button opens the download page instead.
 
 Updates are signed with Pivot's own update key (free, unrelated to the paid OS code signing), so
 the app only installs builds that came from this repository's releases. In-app updates work
-from version 0.3.0 on; older versions need one manual download.
+from version 0.3.0 on (0.5.1 for .deb/.rpm); older versions need one manual download, e.g.
+`sudo apt install ./Pivot_<version>_amd64.deb` in the folder you downloaded it to.
 
 ## Using it
 

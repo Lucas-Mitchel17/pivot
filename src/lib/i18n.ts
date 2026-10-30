@@ -167,7 +167,10 @@ const S = {
   "set.updates.available": ["Versão {version} disponível", "Version {version} available"],
   "set.updates.install": ["Atualizar e reiniciar", "Update and restart"],
   "set.updates.download": ["Baixar no GitHub", "Download from GitHub"],
-  "set.updates.packageHint": ["Instalado por pacote (.deb/.rpm): baixe e instale a versão nova.", "Installed as a package (.deb/.rpm): download and install the new version."],
+  "set.updates.packageHint": ["Para instalar, o sistema vai pedir a sua senha.", "To install it, the system will ask for your password."],
+  "set.updates.installing": ["Instalando…", "Installing…"],
+  "set.updates.installError": ["Não foi possível instalar a atualização. Baixe a versão nova no GitHub.", "Couldn't install the update. Download the new version from GitHub."],
+  "set.updates.store": ["Instalado pela App Center, que atualiza o Pivot sozinha.", "Installed from the App Center, which keeps Pivot up to date."],
   "set.updates.downloading": ["Baixando… {pct}%", "Downloading… {pct}%"],
   "set.updates.error": ["Não foi possível verificar agora. Tente de novo mais tarde.", "Couldn't check right now. Try again later."],
 
